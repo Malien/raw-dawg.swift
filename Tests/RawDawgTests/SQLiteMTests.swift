@@ -1,5 +1,5 @@
 import XCTest
-@testable import SQLiteM
+@testable import RawDawg
 
 final class SQLiteM_swiftTests: XCTestCase {
     func testCanSuccessfullyOpenInMemoryDB() throws {

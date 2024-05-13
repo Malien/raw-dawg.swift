@@ -4,14 +4,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "SQLiteM",
+    name: "raw-dawg",
     platforms: [
         .macOS(.v10_15)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
-            name: "SQLiteM",
+            name: "RawDawg",
             targets: ["SQLiteM"]),
     ],
     dependencies: [
@@ -21,13 +21,13 @@ let package = Package(
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "SQLiteM",
+            name: "RawDawg",
             dependencies: [
                 .product(name: "Logging", package: "swift-log"),
             ]
         ),
         .testTarget(
-            name: "SQLiteMTests",
-            dependencies: ["SQLiteM"]),
+            name: "RawDawgTests",
+            dependencies: ["RawDawg"]),
     ]
 )
