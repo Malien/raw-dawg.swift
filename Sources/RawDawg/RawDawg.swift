@@ -1,8 +1,7 @@
-import Logging
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
-import SQLite3
 import Dispatch
+import Logging
+import SQLite3
+import Foundation
 
 public enum OpenMode {
     case readOnly, readWrite
@@ -33,30 +32,22 @@ private func sqlite3_prepare_v2(
     return sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail)
 }
 
+private func sqlite3_exec(
+    db: OpaquePointer!,
+    sql: UnsafePointer<CChar>!,
+    callback: (@convention(c) (UnsafeMutableRawPointer?, Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Int32)!,
+    callbackArgument: UnsafeMutableRawPointer!,
+    errmsg: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>!
+) -> Int32 {
+    return sqlite3_exec(db, sql, callback, callbackArgument, errmsg)
+}
+
 public struct SQLiteError: Error, CustomStringConvertible {
     public var code: Int32
     public var message: String
 
     public var description: String {
         return "SQLite Error \(code): \(message)"
-    }
-
-    fileprivate init(lastError db: isolated Database, code: Int32? = nil) {
-        self.init(lastError: db.db, code: code)
-    }
-    fileprivate init(lastError db: OpaquePointer, code: Int32? = nil) {
-        self.code = code ?? sqlite3_errcode(db)
-        self.message = String(cString: sqlite3_errmsg(db))
-    }
-    fileprivate init?(unlessOK resultCode: Int32, db: isolated Database) {
-        self.init(unlessOK: resultCode, db: db.db)
-    }
-    fileprivate init?(unlessOK resultCode: Int32, db: OpaquePointer) {
-        if resultCode != SQLITE_OK {
-            self.init(lastError: db, code: resultCode)
-        } else {
-            return nil
-        }
     }
 }
 
@@ -67,6 +58,15 @@ public struct SQLiteEmptyQuery: Error, CustomStringConvertible {
 }
 
 private let log = Logger(label: "io.github.malien.SQLiteM")
+
+public enum RowIDColumnSelector {
+    case none
+    case column(named: String)
+    case column(indexed: Int32)
+    
+    static let id: Self = .column(named: "id")
+    static let rowid: Self = .column(named: "rowid")
+}
 
 public actor Database {
     fileprivate let db: OpaquePointer
@@ -87,23 +87,22 @@ public actor Database {
         }
 
         let res = sqlite3_open_v2(filename: filename, ppDb: &db, flags: flags, zVfs: nil)
-        if let error = SQLiteError(unlessOK: res, db: db!) {
-            if db != nil {
-                let res = sqlite3_close_v2(db)
-                if let closeError = SQLiteError(unlessOK: res, db: db!) {
-                    log.error(
-                        "Database open failed, during which closing the database also failed. \(closeError)"
-                    )
-                }
+        guard let db = db else { preconditionFailure("Cannot open sqlite databse, since sqlite wasn't able to allocate memory (how exactly?)") }
+
+        if let error = Self.error(unsafelyDescribedBy: db, unlessOK: res) {
+            let res = sqlite3_close_v2(db)
+            if let closeError = Self.error(unsafelyDescribedBy: db, unlessOK: res) {
+                log.error(
+                    "Database open failed, during which closing the database also failed. \(closeError)"
+                )
             }
             throw error
         }
 
-        self.db = db!
+        self.db = db
     }
 
-    @available(macOS 10.14, *)
-    public func prepare(_ query: String, persistent: Bool = false) throws -> PreparedStatement {
+    public func prepare(_ query: String, persistent: Bool = false, rowid: RowIDColumnSelector = .none) throws -> PreparedStatement {
         var stmt: OpaquePointer? = nil
         var flags: UInt32 = 0
         if persistent {
@@ -122,29 +121,25 @@ public actor Database {
         if stmt == nil {
             throw SQLiteEmptyQuery()
         }
-        return PreparedStatement(db: self, stmt: PreparedStatementPtr(ptr: stmt!))
-    }
-
-    @available(macOS, obsoleted: 10.14)
-    public func prepare(_ query: String) throws -> PreparedStatement {
-        var stmt: OpaquePointer? = nil
-        try throwing {
-            sqlite3_prepare_v2(
-                db: self.db,
-                zSql: query,
-                nByte: Int32(query.utf8.count),
-                ppStmt: &stmt,
-                pzTail: nil
-            )
+        let columnCount = sqlite3_column_count(stmt)
+        let columnNames = (0..<columnCount).map {
+            if let cStr = sqlite3_column_name(stmt, $0) {
+                CString(ptr: cStr)
+            } else {
+                fatalError("Couldn't allocate column name")
+            }
         }
-        if stmt == nil {
-            throw SQLiteEmptyQuery()
-        }
-        return PreparedStatement(db: self, stmt: PreparedStatementPtr(ptr: stmt!))
+        return PreparedStatement(db: self, stmt: PreparedStatementPtr(ptr: stmt!), rowidColumn: rowid, columnNames: columnNames)
     }
     
+    public func execute(_ query: String) throws {
+        try throwing {
+            sqlite3_exec(db: self.db, sql: query, callback: nil, callbackArgument: nil, errmsg: nil)
+        }
+    }
+
     private func throwing(_ action: () -> Int32) throws {
-        if let error = SQLiteError(unlessOK: action(), db: self.db) {
+        if let error = self.error(unlessOK: action()) {
             throw error
         }
     }
@@ -154,10 +149,166 @@ public actor Database {
             sqlite3_finalize(statement.ptr)
         }
     }
+
+    func lastError() -> SQLiteError {
+        return self.lastError(withCode: sqlite3_errcode(self.db))
+    }
     
+    func lastError(withCode code: Int32) -> SQLiteError {
+        let message = if let cMsgStr = sqlite3_errmsg(self.db) {
+            String(cString: cMsgStr)
+        } else {
+            "No error message available"
+        }
+        return SQLiteError(code: code, message: message)
+    }
+    
+    func error(unlessOK resultCode: Int32) -> SQLiteError? {
+        if resultCode != SQLITE_OK {
+            return self.lastError(withCode: resultCode)
+        } else {
+            return nil
+        }
+    }
+
+    // This constructor is safe to call only from the thread (actor) that manages the database connection
+    private static func error(unsafelyDescribedBy db: OpaquePointer, code: Int32) -> SQLiteError {
+        let message = if let cMsgStr = sqlite3_errmsg(db) {
+            String(cString: cMsgStr)
+        } else {
+            "No error message available"
+        }
+        return SQLiteError(code: code, message: message)
+    }
+    
+    // This constructor is safe to call only from the thread (actor) that manages the database connection
+    private static func error(unsafelyDescribedBy db: OpaquePointer, unlessOK resultCode: Int32) -> SQLiteError? {
+        if resultCode != SQLITE_OK {
+            return error(unsafelyDescribedBy: db, code: resultCode)
+        } else {
+            return nil
+        }
+    }
+    
+    fileprivate func step(statement: PreparedStatementPtr, columnNames: [CString]) throws -> Row? {
+        let res = sqlite3_step(statement.ptr)
+        switch res {
+        case SQLITE_DONE:
+            return nil
+        case SQLITE_ROW:
+            let values = try columnNames.indices.map {
+                try self.parseValue(in: statement, at: Int32($0))
+            }
+            return Row(columns: columnNames.map { $0.toOwned() }, values: values)
+        case SQLITE_BUSY:
+            fallthrough
+        default:
+            throw self.lastError(withCode: res)
+        }
+    }
+    
+    private func parseValue(in statement: PreparedStatementPtr, at columnIndex: Int32) throws -> SQLiteValue {
+        switch sqlite3_column_type(statement.ptr, columnIndex) {
+        case SQLITE_NULL:
+            return .null
+        case SQLITE_INTEGER:
+            return .integer(sqlite3_column_int64(statement.ptr, columnIndex))
+        case SQLITE_FLOAT:
+            return .float(sqlite3_column_double(statement.ptr, columnIndex))
+        case SQLITE3_TEXT:
+            return .text(
+                String(cString: sqlite3_column_text(statement.ptr, columnIndex))
+            )
+        case SQLITE_BLOB:
+            let size = sqlite3_column_bytes(statement.ptr, columnIndex)
+            let blobPtr = sqlite3_column_blob(statement.ptr, columnIndex)
+            return if let blobPtr = blobPtr {
+                .blob(.loaded(
+                    Data(bytes: blobPtr, count: Int(size))
+                ))
+            } else {
+                .blob(.empty)
+            }
+            
+        default:
+            fatalError("Unreachable. SQLite doesn't support data type for column \(columnIndex)")
+        }
+    }
+    
+    fileprivate func collect(statement: PreparedStatementPtr, columnNames: [CString]) throws -> [Row] {
+        var result = [Row]()
+        while let row = try step(statement: statement, columnNames: columnNames) {
+            result.append(row)
+        }
+        return result
+    }
+
     deinit {
-        if let error = SQLiteError(unlessOK: sqlite3_close(db), db: db) {
+        // This might be hella unsafe. Don't know. Solving this would require doing own DispatchQueue
+        // synchronisation. I don't want it. I'd like to stay in the realm of swift actors.
+        if let error = Self.error(unsafelyDescribedBy: db, unlessOK: sqlite3_close(db)) {
             log.error("Database close failed. \(error)")
+        }
+    }
+}
+
+public struct Row: Equatable {
+    public let columns: [String]
+    public var values: [SQLiteValue]
+}
+
+public enum SQLiteBlob: Equatable {
+    case empty
+    case loaded(Data)
+    case stream(Never)
+}
+
+public struct ConversionError: Error, CustomStringConvertible {
+    var from: SQLiteValue
+    var to: SQLPrimitiveDecodable.Type
+    
+    public var description: String {
+        "Cannot convert SQLite value \(from) to type \(to)"
+    }
+}
+
+public enum SQLiteValue: Equatable {
+    case null
+    case integer(Int64)
+    case float(Float64)
+    case text(String)
+    case blob(SQLiteBlob)
+    
+    func decode<T: SQLPrimitiveDecodable>() throws -> T {
+        if let value = T.init(fromSQL: self) {
+            return value
+        } else {
+            throw ConversionError(from: self, to: T.self)
+        }
+    }
+}
+
+protocol SQLPrimitiveDecodable {
+    init?(fromSQL primitive: SQLiteValue)
+}
+
+extension Int64: SQLPrimitiveDecodable {
+    init?(fromSQL primitive: SQLiteValue) {
+        guard case .integer(let int64) = primitive else {
+            return nil
+        }
+        self = int64
+    }
+}
+
+extension Optional: SQLPrimitiveDecodable where Wrapped: SQLPrimitiveDecodable {
+    init?(fromSQL primitive: SQLiteValue) {
+        if case .null = primitive {
+            self = .none
+        } else if let inner = Wrapped.init(fromSQL: primitive) {
+            self = inner
+        } else {
+            return nil
         }
     }
 }
@@ -166,26 +317,49 @@ private struct PreparedStatementPtr: @unchecked Sendable {
     var ptr: OpaquePointer
 }
 
+private struct CString: @unchecked Sendable {
+    var ptr: UnsafePointer<CChar>
+    
+    func toOwned() -> String {
+        String(cString: self.ptr)
+    }
+}
+
 public struct PreparedStatement: ~Copyable {
     private let db: Database
     private let stmt: PreparedStatementPtr
     private var finalized = false
-    
-    fileprivate init(db: Database, stmt: PreparedStatementPtr) {
+    private let rowidColumn: RowIDColumnSelector
+    // Strings are valid until the call to sqlite3_finalize
+    private let columnNames: [CString]
+
+    fileprivate init(db: Database, stmt: PreparedStatementPtr, rowidColumn: RowIDColumnSelector, columnNames: [CString]) {
         self.db = db
         self.stmt = stmt
+        self.rowidColumn = rowidColumn
+        self.columnNames = columnNames
     }
-    
+
     public consuming func finalize() async throws {
         self.finalized = true
         try await self.db.finalize(statement: self.stmt)
     }
     
+    public mutating func step() async throws -> Row? {
+        try await self.db.step(statement: self.stmt, columnNames: self.columnNames)
+    }
+    
+    public consuming func collect() async throws -> [Row] {
+        try await self.db.collect(statement: self.stmt, columnNames: self.columnNames)
+    }
+
     deinit {
         if self.finalized { return }
-        
+
         let stmnt = self.stmt
         let db = self.db
+
+        // Requirement on Task is the only thing preventing this from building on macOS < 10.15
         Task {
             do {
                 try await db.finalize(statement: stmnt)
