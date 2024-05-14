@@ -34,7 +34,7 @@ struct User: Codable {
 let username = "Alice"
 let alice: User = try await db.prepare("select id, name, age from users where name = \(username)").fetchOne()
 
-let adults: [User] = try await db.prepare("select * rom users where age is not null and age > 18").fetchAll()
+let adults: [User] = try await db.prepare("select * from users where age is not null and age > 18").fetchAll()
 ```
 
 ### Checklist:

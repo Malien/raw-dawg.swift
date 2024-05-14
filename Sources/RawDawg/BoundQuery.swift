@@ -1,4 +1,4 @@
-public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
+public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation, Sendable {
     var query: String
     var bindings: [SQLiteValue]
 

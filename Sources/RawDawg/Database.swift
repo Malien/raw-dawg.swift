@@ -104,6 +104,12 @@ public enum RowIDColumnSelector: Sendable {
     static let rowid: Self = .column(named: "rowid")
 }
 
+public struct InsertionStats: Equatable, Hashable {
+    public var lastInsertedRowid: sqlite3_int64
+    public var rowsAffected: sqlite3_int64
+    public var totalRowsAffected: sqlite3_int64
+}
+
 public enum OpenMode {
     case readOnly, readWrite
 }
@@ -329,6 +335,34 @@ public actor Database {
             result.append(row)
         }
         return result
+    }
+    
+    internal func run(statement: PreparedStatementPtr) throws -> InsertionStats {
+        let res = sqlite3_step(statement.ptr)
+        switch res {
+        case SQLITE_DONE: fallthrough
+        case SQLITE_ROW:
+            let rowsAffected = if #available(macOS 12.3, iOS 15.4, *) {
+                sqlite3_changes64(db)
+            } else {
+                Int64(sqlite3_changes(db))
+            }
+            let totalRowsAffected = if #available(macOS 12.3, iOS 15.4, *) {
+                sqlite3_total_changes64(db)
+            } else {
+                Int64(sqlite3_changes(db))
+            }
+            
+            return InsertionStats(
+                lastInsertedRowid: sqlite3_last_insert_rowid(db),
+                rowsAffected: rowsAffected,
+                totalRowsAffected: totalRowsAffected
+            )
+        case SQLITE_BUSY:
+            fallthrough
+        default:
+            throw self.lastError(withCode: res)
+        }
     }
 
     deinit {

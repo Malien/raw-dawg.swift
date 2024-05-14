@@ -49,7 +49,7 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiv
 }
 
 public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable,
-    CustomStringConvertible
+    CustomStringConvertible, Sendable
 {
     case null
     case integer(Int64)
@@ -238,7 +238,7 @@ extension UInt16: SQLPrimitiveEncodable {}
 extension UInt32: SQLPrimitiveEncodable {}
 extension UInt64: SQLPrimitiveEncodable {}
 
-@available(macOS 11.0, *)
+@available(macOS 11.0, iOS 14.0, *)
 extension Float16: SQLPrimitiveEncodable {
     public func encode() -> SQLiteValue {
         .float(Double(self))
