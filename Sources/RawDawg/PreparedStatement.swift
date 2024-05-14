@@ -132,6 +132,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     }
 
     /// Returns last inserted rowid
+    @discardableResult
     public consuming func run() async throws -> InsertionStats {
         try await finalizeAfter { statement in
             try await statement.db.run(statement: statement.stmt)
