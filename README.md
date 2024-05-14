@@ -4,19 +4,30 @@ _raw dawg dat squeel_.
 Cause there's nothing wrong with writing raw SQL
 
 ### Package isn't quite ready yet
-- [ ] Parametrized updates/inserts via `db.prepare`
-- [ ] SPM 1.0.0 tag
+- [X] Parametrized updates/inserts via `db.prepare`
+- [X] SPM 0.0.1 tag
 - [ ] Transaction support
 - [ ] Blob streaming
 - [ ] Custom `AsyncRowDecodable` protocol based deserialization
 - [ ] `@AsyncRowDecodable` macro to conform automagically
-- [ ] Dynamic query building capabilities(?)
+- [ ] Additional dynamic query building capabilities(?)
 - [ ] Pooling
 - [ ] Date-time support
 - [ ] URL support
 - [ ] SharedStatement
+- [ ] Stabilize API / Usability testing
+- [ ] SPM 1.0.0 tag
 
 ## Usage
+Add dependancy to the `Package.swift`
+```swift
+.package(url: "https://github.com/malien/raw-dawg.swift.git", from: "0.0.1")
+```
+And don't forget to add 
+```swift
+.product(name: "RawDawg", package: "raw-dawg.swift")
+```
+to the target dependancies as well
 
 ```swift
 let db = try Database(filename: "mydb.sqlite")
