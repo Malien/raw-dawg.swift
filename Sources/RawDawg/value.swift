@@ -48,15 +48,6 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiv
     }
 }
 
-public struct ConversionError: Error, CustomStringConvertible {
-    var from: SQLiteValue
-    var to: SQLPrimitiveDecodable.Type
-
-    public var description: String {
-        "Cannot convert SQLite value \(from) to type \(to)"
-    }
-}
-
 public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable,
     CustomStringConvertible
 {

@@ -247,7 +247,7 @@ final class SQLiteM_swiftTests: XCTestCase {
 
     func testOverboundQueryDoesntExecute() async throws {
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        let query = BoundSQLQuery(raw: "select 1", bindings: [.integer(5)])
+        let query = BoundQuery(raw: "select 1", bindings: [.integer(5)])
         try await assertThrows {
             _ = try await db.prepare(query)
         }
@@ -266,5 +266,12 @@ final class SQLiteM_swiftTests: XCTestCase {
             """
         ).fetchOne()
         XCTAssertEqual(res, SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
+    }
+    
+    func testCanInterpolateFragment() async throws {
+        let db = try await prepareSampleDB()
+        let whereClause: BoundQuery = "where f64 > \(1.0)"
+        let res: [Int] = try await db.prepare("select i64 from test \(fragment: whereClause) limit \(1)").fetchAll()
+        XCTAssertEqual(res, [2])
     }
 }
