@@ -1,6 +1,6 @@
 import Foundation
 
-public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable {
+public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable {
     case empty
     case loaded(Data)
     case stream(Never)
@@ -20,6 +20,10 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable {
         self = blob
     }
     
+    init<T>(_ bytes: T) where T: Sequence, T.Element == UInt8 {
+        self = .loaded(Data(bytes))
+    }
+    
     public init(from decoder: any Decoder) throws {
         guard let decoder = decoder as? SQLValueDecoder else {
             throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "SQLiteBlob can only be decoded from RawDawg.Row (aka. SQLValueDecoder)"))
@@ -28,6 +32,10 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable {
             throw DecodingError.typeMismatch(Self.self, .init(codingPath: decoder.codingPath, debugDescription: "Cannot decode SQLiteBlob from \(decoder.value)"))
         }
         self = blob
+    }
+    
+    public func encode() -> SQLiteValue {
+        .blob(self)
     }
 }
 
@@ -40,27 +48,52 @@ public struct ConversionError: Error, CustomStringConvertible {
     }
 }
 
-public enum SQLiteValue: Equatable {
+public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable, CustomStringConvertible {
     case null
     case integer(Int64)
     case float(Float64)
     case text(String)
     case blob(SQLiteBlob)
     
-    func get<T: SQLPrimitiveDecodable>() throws -> T {
-        if let value = T.init(fromSQL: self) {
-            return value
-        } else {
-            throw ConversionError(from: self, to: T.self)
-        }
+    init?(fromSQL primitive: SQLiteValue) {
+        self = primitive
     }
     
-    func decode<T: SQLPrimitiveDecodable>() -> T? {
-        T.init(fromSQL: self)
+    public func encode() -> SQLiteValue {
+        self
+    }
+    
+    public var description: String {
+        switch self {
+        case .null: "NULL"
+        case .integer(let int64): int64.description
+        case .float(let float): float.description
+        case .text(let text): String(reflecting: text)
+        case .blob(let blob): String(reflecting: blob)
+        }
     }
 }
 
-public struct SQLNull: Equatable, Hashable {}
+public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable  {
+    public init() {}
+    
+    init?(fromSQL primitive: SQLiteValue) {
+        guard case .null = primitive else {
+            return nil
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        guard container.decodeNil() else {
+            throw DecodingError.typeMismatch(SQLNull.self, .init(codingPath: container.codingPath, debugDescription: "SQLNull can only be deserialized from a 'nil' value"))
+        }
+    }
+    
+    public func encode() -> SQLiteValue {
+        .null
+    }
+}
 
 protocol SQLPrimitiveDecodable {
     init?(fromSQL primitive: SQLiteValue)
@@ -122,23 +155,6 @@ extension Float: SQLPrimitiveDecodable {
     }
 }
 
-extension SQLNull: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
-        guard case .null = primitive else {
-            return nil
-        }
-    }
-}
-
-extension SQLNull: Decodable {
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        guard container.decodeNil() else {
-            throw DecodingError.typeMismatch(SQLNull.self, .init(codingPath: container.codingPath, debugDescription: "SQLNull can only be deserialized from a 'nil' value"))
-        }
-    }
-}
-
 internal extension FixedWidthInteger {
     init?(exactlyWithinBounds fp: Double) {
         guard fp <= Double(Self.max) else {
@@ -184,3 +200,59 @@ extension UInt8: SQLPrimitiveDecodable {}
 extension UInt16: SQLPrimitiveDecodable {}
 extension UInt32: SQLPrimitiveDecodable {}
 extension UInt64: SQLPrimitiveDecodable {}
+
+public protocol SQLPrimitiveEncodable {
+    consuming func encode() -> SQLiteValue
+}
+
+extension String: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        .text(self)
+    }
+}
+
+extension FixedWidthInteger {
+    public func encode() -> SQLiteValue {
+        .integer(Int64(self))
+    }
+}
+
+extension Int: SQLPrimitiveEncodable {}
+extension Int8: SQLPrimitiveEncodable {}
+extension Int16: SQLPrimitiveEncodable {}
+extension Int32: SQLPrimitiveEncodable {}
+extension Int64: SQLPrimitiveEncodable {}
+
+extension UInt: SQLPrimitiveEncodable {}
+extension UInt8: SQLPrimitiveEncodable {}
+extension UInt16: SQLPrimitiveEncodable {}
+extension UInt32: SQLPrimitiveEncodable {}
+extension UInt64: SQLPrimitiveEncodable {}
+
+@available(macOS 11.0, *)
+extension Float16: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        .float(Double(self))
+    }
+}
+
+extension Float32: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        .float(Double(self))
+    }
+}
+
+extension Float64: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        .float(self)
+    }
+}
+
+extension Optional: SQLPrimitiveEncodable where Wrapped: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        switch self {
+        case .none: .null
+        case .some(let inner): inner.encode()
+        }
+    }
+}

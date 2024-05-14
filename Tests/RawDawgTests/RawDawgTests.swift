@@ -25,7 +25,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCanSelectTypedInteger() async throws {
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        var res: Int = try await db.prepare("SELECT 1").fetchOne()
+        let res: Int = try await db.prepare("SELECT 1").fetchOne()
         XCTAssertEqual(res, 1)
     }
     
@@ -34,7 +34,7 @@ final class SQLiteM_swiftTests: XCTestCase {
             case pending = 0, completed = 1, failed = 2
         }
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        var states: [State] = try await db.prepare("""
+        let states: [State] = try await db.prepare("""
             with cte(state) as (values (0), (1), (2))
                 select state from cte
             """).fetchAll()
@@ -46,7 +46,7 @@ final class SQLiteM_swiftTests: XCTestCase {
             case pending, completed, failed
         }
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        var states: [State] = try await db.prepare("""
+        let states: [State] = try await db.prepare("""
             with cte(state) as (values ('pending'), ('completed'), ('failed'))
                 select state from cte
             """).fetchAll()
@@ -55,7 +55,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() async throws {
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        var statement = try await db.prepare("select 1, 2")
+        let statement = try await db.prepare("select 1, 2")
         try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
             _ = try await statement.fetchOne() as Int
         }
@@ -90,6 +90,15 @@ final class SQLiteM_swiftTests: XCTestCase {
         return db
     }
     
+    private func assertThrows(block: () async throws -> Void) async throws {
+        var error: (any Error)? = nil
+        do {
+            try await block()
+        } catch let e {
+            error = e
+        }
+        XCTAssertNotNil(error)
+    }
     private func assertThrows(statement: consuming PreparedStatement, block: (consuming PreparedStatement) async throws -> Void) async throws {
         var error: (any Error)? = nil
         do {
@@ -187,7 +196,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCanFetchMissingOne() async throws {
         let db = try await prepareSampleDB()
-        var statement = try await db.prepare("select * from test limit 0")
+        let statement = try await db.prepare("select * from test limit 0")
         try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
             _ = try await statement.fetchOne()
         }
@@ -201,9 +210,37 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCanFetchMissingDecodableOne() async throws {
         let db = try await prepareSampleDB()
-        var statement = try await db.prepare("select * from test limit 0")
+        let statement = try await db.prepare("select * from test limit 0")
         try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
             _ = try await statement.fetchOne() as SpecialRow
         }
+    }
+    
+    func testInsuffiecientlyBoundQueryDoesntExecute() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        try await assertThrows {
+            _ = try await db.prepare("select ?")
+        }
+    }
+    
+    func testOverboundQueryDoesntExecute() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let query = BoundSQLQuery(raw: "select 1", bindings: [.integer(5)])
+        try await assertThrows {
+            _ = try await db.prepare(query)
+        }
+    }
+    
+    func testBoundQueryProperlyRuns() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let res: SpecialRow = try await db.prepare("""
+            select
+                \(42) as i64,
+                \(2.0) as f64,
+                \("text") as string,
+                \(SQLiteBlob([0x42, 0x69])) as bytes,
+                \(SQLNull()) as nil
+            """).fetchOne()
+        XCTAssertEqual(res, SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
     }
 }

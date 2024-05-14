@@ -1,6 +1,10 @@
 import Dispatch
 import Logging
+#if canImport(SQLite3)
 import SQLite3
+#else
+import CSQLite
+#endif
 
 public enum OpenMode {
     case readOnly, readWrite
@@ -41,6 +45,32 @@ private func sqlite3_exec(
     return sqlite3_exec(db, sql, callback, callbackArgument, errmsg)
 }
 
+private func sqlite3_bind_text64(
+    statement: OpaquePointer!,
+    position: Int32,
+    text: UnsafePointer<CChar>!,
+    byteSize: sqlite3_uint64,
+    destructor: (@convention(c) (UnsafeMutableRawPointer?) -> Void)!,
+    encoding: UInt8
+) -> Int32 {
+    sqlite3_bind_text64(statement, position, text, byteSize, destructor, encoding)
+}
+
+private func sqlite3_bind_blob64(
+    statement: OpaquePointer!,
+    position: Int32,
+    bytes: UnsafeRawPointer!,
+    size: sqlite3_uint64,
+    destructor: (@convention(c) (UnsafeMutableRawPointer?) -> Void)!
+) -> Int32 {
+    sqlite3_bind_blob64(statement, position, bytes, size, destructor)
+}
+
+// Theese constants are not imported by swift from C headers, since they do unsafe function pointer casting
+// DO NOT CALL THOSE! THEY ARE NOT VALID POINTERS
+private let SQLITE_STATIC = unsafeBitCast(0, to: sqlite3_destructor_type.self)
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
 public struct SQLiteError: Error, CustomStringConvertible {
     public var code: Int32
     public var message: String
@@ -50,9 +80,19 @@ public struct SQLiteError: Error, CustomStringConvertible {
     }
 }
 
-public struct SQLiteEmptyQuery: Error, CustomStringConvertible {
+public enum InvalidQuery: Error, CustomStringConvertible {
+    case empty
+    case bindingMissmatch(expected: Int32, got: Int)
+    
     public var description: String {
-        return "Cannot prepare an empty query."
+        return switch self {
+        case .empty:
+            "Cannot prepare an empty query."
+        case let .bindingMissmatch(expected: expected, got: got) where got < expected:
+            "Insufficient number of bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided"
+        case let .bindingMissmatch(expected: expected, got: got):
+            "Too many bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided"
+        }
     }
 }
 
@@ -101,7 +141,7 @@ public actor Database {
         self.db = db
     }
 
-    public func prepare(_ query: String, persistent: Bool = false, rowid: RowIDColumnSelector = .none) throws -> PreparedStatement {
+    public func prepare(_ query: BoundSQLQuery, persistent: Bool = false, rowid: RowIDColumnSelector = .none) throws -> PreparedStatement {
         var stmt: OpaquePointer? = nil
         var flags: UInt32 = 0
         if persistent {
@@ -110,15 +150,15 @@ public actor Database {
         try throwing {
             sqlite3_prepare_v3(
                 db: self.db,
-                zSql: query,
-                nByte: Int32(query.utf8.count),
+                zSql: query.query,
+                nByte: Int32(query.query.utf8.count),
                 prepFlags: flags,
                 ppStmt: &stmt,
                 pzTail: nil
             )
         }
         if stmt == nil {
-            throw SQLiteEmptyQuery()
+            throw InvalidQuery.empty
         }
         let columnCount = sqlite3_column_count(stmt)
         let columnNames = (0..<columnCount).map {
@@ -128,6 +168,31 @@ public actor Database {
                 fatalError("Couldn't allocate column name")
             }
         }
+        let bindingCount = sqlite3_bind_parameter_count(stmt)
+        guard bindingCount == query.bindings.count else {
+            throw InvalidQuery.bindingMissmatch(expected: bindingCount, got: query.bindings.count)
+        }
+        for (position, binding) in zip(Int32(1)..., query.bindings) {
+            try throwing {
+                switch binding {
+                case .null:
+                    sqlite3_bind_null(stmt, position)
+                case .integer(let int):
+                    sqlite3_bind_int64(stmt, position, int)
+                case .float(let float):
+                    sqlite3_bind_double(stmt, position, float)
+                case .text(let string):
+                    sqlite3_bind_text64(statement: stmt, position: position, text: string, byteSize: sqlite3_uint64(string.utf8.count), destructor: SQLITE_TRANSIENT, encoding: UInt8(SQLITE_UTF8))
+                case .blob(.loaded(let data)):
+                    data.withUnsafeBytes { buffer in
+                        sqlite3_bind_blob64(statement: stmt, position: position, bytes: buffer.baseAddress, size: sqlite3_uint64(buffer.count), destructor: SQLITE_TRANSIENT)
+                    }
+                case .blob(.empty):
+                    sqlite3_bind_blob64(statement: stmt, position: position, bytes: nil, size: 0, destructor: SQLITE_STATIC)
+                }
+            }
+        }
+        log.trace("Prepared SQL statement", metadata: ["query": "\(query.query)", "bindings": "\(query.bindings)"])
         return PreparedStatement(db: self, stmt: PreparedStatementPtr(ptr: stmt!), rowidColumn: rowid, columnNames: columnNames)
     }
     
@@ -412,5 +477,59 @@ public struct PreparedStatement: ~Copyable, Sendable {
                 log.error("Couldn't finalize prepared statement: \(error)")
             }
         }
+    }
+}
+
+public struct BoundSQLQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
+    var query: String
+    var bindings: [SQLiteValue]
+    
+    public typealias StringLiteralType = StaticString
+    
+    init(raw query: String, bindings: [SQLiteValue]) {
+        self.query = query
+        self.bindings = bindings
+    }
+    
+    public init(stringLiteral value: Self.StringLiteralType) {
+        query = value.description
+        bindings = []
+    }
+    
+    public struct StringInterpolation : StringInterpolationProtocol {
+        var query: String
+        var bindings: [SQLiteValue] = []
+        
+        public typealias StringLiteralType = StaticString
+        
+        public init(literalCapacity: Int, interpolationCount: Int) {
+            query = ""
+            query.reserveCapacity(literalCapacity + interpolationCount)
+            bindings = []
+            bindings.reserveCapacity(interpolationCount)
+        }
+        
+        public mutating func appendLiteral(_ literal: StaticString) {
+            query.append(literal.description)
+        }
+        
+        public mutating func appendInterpolation<T: SQLPrimitiveEncodable>(_ value: T) {
+            query += "?"
+            bindings.append(value.encode())
+        }
+        
+        public mutating func appendInterpolation(fragment: BoundSQLQuery) {
+            query += fragment.query
+            bindings += fragment.bindings
+        }
+        
+        public mutating func appendInterpolation(raw: String) {
+            query += raw
+        }
+    }
+
+    public init(stringInterpolation: Self.StringInterpolation) {
+        query = stringInterpolation.query
+        bindings = stringInterpolation.bindings
     }
 }
