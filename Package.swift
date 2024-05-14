@@ -4,30 +4,30 @@
 import PackageDescription
 
 var packageDeps: [Package.Dependency] = [
-    .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+    .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0")
 ]
 #if !canImport(SQLite3)
-packageDeps.append(.package(url: "https://github.com/sbooth/CSQLite.git", from: "3.45.3"))
+    packageDeps.append(.package(url: "https://github.com/sbooth/CSQLite.git", from: "3.45.3"))
 #endif
 
 var targetDeps: [Target.Dependency] = [
-    .product(name: "Logging", package: "swift-log"),
+    .product(name: "Logging", package: "swift-log")
 ]
 #if !canImport(SQLite3)
-packageDeps.append("CSQLite")
+    packageDeps.append("CSQLite")
 #endif
 
 let package = Package(
     name: "raw-dawg",
     platforms: [
-        .macOS(.v10_15),
+        .macOS(.v10_15)
     ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "RawDawg",
             targets: ["RawDawg"]
-        ),
+        )
     ],
     dependencies: packageDeps,
     targets: [
@@ -41,4 +41,3 @@ let package = Package(
             dependencies: ["RawDawg"]),
     ]
 )
-

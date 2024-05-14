@@ -1,9 +1,10 @@
 import Dispatch
 import Logging
+
 #if canImport(SQLite3)
-import SQLite3
+    import SQLite3
 #else
-import CSQLite
+    import CSQLite
 #endif
 
 public enum OpenMode {
@@ -38,7 +39,7 @@ private func sqlite3_prepare_v2(
 private func sqlite3_exec(
     db: OpaquePointer!,
     sql: UnsafePointer<CChar>!,
-    callback: (@convention(c) (UnsafeMutableRawPointer?, Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Int32)!,
+    callback: sqlite3_callback!,
     callbackArgument: UnsafeMutableRawPointer!,
     errmsg: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>!
 ) -> Int32 {
@@ -50,7 +51,7 @@ private func sqlite3_bind_text64(
     position: Int32,
     text: UnsafePointer<CChar>!,
     byteSize: sqlite3_uint64,
-    destructor: (@convention(c) (UnsafeMutableRawPointer?) -> Void)!,
+    destructor: sqlite3_destructor_type!,
     encoding: UInt8
 ) -> Int32 {
     sqlite3_bind_text64(statement, position, text, byteSize, destructor, encoding)
@@ -61,7 +62,7 @@ private func sqlite3_bind_blob64(
     position: Int32,
     bytes: UnsafeRawPointer!,
     size: sqlite3_uint64,
-    destructor: (@convention(c) (UnsafeMutableRawPointer?) -> Void)!
+    destructor: sqlite3_destructor_type!
 ) -> Int32 {
     sqlite3_bind_blob64(statement, position, bytes, size, destructor)
 }
@@ -83,7 +84,7 @@ public struct SQLiteError: Error, CustomStringConvertible {
 public enum InvalidQuery: Error, CustomStringConvertible {
     case empty
     case bindingMissmatch(expected: Int32, got: Int)
-    
+
     public var description: String {
         return switch self {
         case .empty:
@@ -98,11 +99,11 @@ public enum InvalidQuery: Error, CustomStringConvertible {
 
 private let log = Logger(label: "io.github.malien.SQLiteM")
 
-public enum RowIDColumnSelector : Sendable{
+public enum RowIDColumnSelector: Sendable {
     case none
     case column(named: String)
     case column(indexed: Int32)
-    
+
     static let id: Self = .column(named: "id")
     static let rowid: Self = .column(named: "rowid")
 }
@@ -126,7 +127,11 @@ public actor Database {
         }
 
         let res = sqlite3_open_v2(filename: filename, ppDb: &db, flags: flags, zVfs: nil)
-        guard let db = db else { preconditionFailure("Cannot open sqlite databse, since sqlite wasn't able to allocate memory (how exactly?)") }
+        guard let db = db else {
+            preconditionFailure(
+                "Cannot open sqlite databse, since sqlite wasn't able to allocate memory (how exactly?)"
+            )
+        }
 
         if let error = Self.error(unsafelyDescribedBy: db, unlessOK: res) {
             let res = sqlite3_close_v2(db)
@@ -141,7 +146,9 @@ public actor Database {
         self.db = db
     }
 
-    public func prepare(_ query: BoundSQLQuery, persistent: Bool = false, rowid: RowIDColumnSelector = .none) throws -> PreparedStatement {
+    public func prepare(
+        _ query: BoundSQLQuery, persistent: Bool = false, rowid: RowIDColumnSelector = .none
+    ) throws -> PreparedStatement {
         var stmt: OpaquePointer? = nil
         var flags: UInt32 = 0
         if persistent {
@@ -182,20 +189,31 @@ public actor Database {
                 case .float(let float):
                     sqlite3_bind_double(stmt, position, float)
                 case .text(let string):
-                    sqlite3_bind_text64(statement: stmt, position: position, text: string, byteSize: sqlite3_uint64(string.utf8.count), destructor: SQLITE_TRANSIENT, encoding: UInt8(SQLITE_UTF8))
+                    sqlite3_bind_text64(
+                        statement: stmt, position: position, text: string,
+                        byteSize: sqlite3_uint64(string.utf8.count), destructor: SQLITE_TRANSIENT,
+                        encoding: UInt8(SQLITE_UTF8))
                 case .blob(.loaded(let data)):
                     data.withUnsafeBytes { buffer in
-                        sqlite3_bind_blob64(statement: stmt, position: position, bytes: buffer.baseAddress, size: sqlite3_uint64(buffer.count), destructor: SQLITE_TRANSIENT)
+                        sqlite3_bind_blob64(
+                            statement: stmt, position: position, bytes: buffer.baseAddress,
+                            size: sqlite3_uint64(buffer.count), destructor: SQLITE_TRANSIENT)
                     }
                 case .blob(.empty):
-                    sqlite3_bind_blob64(statement: stmt, position: position, bytes: nil, size: 0, destructor: SQLITE_STATIC)
+                    sqlite3_bind_blob64(
+                        statement: stmt, position: position, bytes: nil, size: 0,
+                        destructor: SQLITE_STATIC)
                 }
             }
         }
-        log.trace("Prepared SQL statement", metadata: ["query": "\(query.query)", "bindings": "\(query.bindings)"])
-        return PreparedStatement(db: self, stmt: PreparedStatementPtr(ptr: stmt!), rowidColumn: rowid, columnNames: columnNames)
+        log.trace(
+            "Prepared SQL statement",
+            metadata: ["query": "\(query.query)", "bindings": "\(query.bindings)"])
+        return PreparedStatement(
+            db: self, stmt: PreparedStatementPtr(ptr: stmt!), rowidColumn: rowid,
+            columnNames: columnNames)
     }
-    
+
     public func execute(_ query: String) throws {
         try throwing {
             sqlite3_exec(db: self.db, sql: query, callback: nil, callbackArgument: nil, errmsg: nil)
@@ -217,16 +235,17 @@ public actor Database {
     func lastError() -> SQLiteError {
         return self.lastError(withCode: sqlite3_errcode(self.db))
     }
-    
+
     func lastError(withCode code: Int32) -> SQLiteError {
-        let message = if let cMsgStr = sqlite3_errmsg(self.db) {
-            String(cString: cMsgStr)
-        } else {
-            "No error message available"
-        }
+        let message =
+            if let cMsgStr = sqlite3_errmsg(self.db) {
+                String(cString: cMsgStr)
+            } else {
+                "No error message available"
+            }
         return SQLiteError(code: code, message: message)
     }
-    
+
     func error(unlessOK resultCode: Int32) -> SQLiteError? {
         if resultCode != SQLITE_OK {
             return self.lastError(withCode: resultCode)
@@ -237,23 +256,26 @@ public actor Database {
 
     // This constructor is safe to call only from the thread (actor) that manages the database connection
     private static func error(unsafelyDescribedBy db: OpaquePointer, code: Int32) -> SQLiteError {
-        let message = if let cMsgStr = sqlite3_errmsg(db) {
-            String(cString: cMsgStr)
-        } else {
-            "No error message available"
-        }
+        let message =
+            if let cMsgStr = sqlite3_errmsg(db) {
+                String(cString: cMsgStr)
+            } else {
+                "No error message available"
+            }
         return SQLiteError(code: code, message: message)
     }
-    
+
     // This constructor is safe to call only from the thread (actor) that manages the database connection
-    private static func error(unsafelyDescribedBy db: OpaquePointer, unlessOK resultCode: Int32) -> SQLiteError? {
+    private static func error(unsafelyDescribedBy db: OpaquePointer, unlessOK resultCode: Int32)
+        -> SQLiteError?
+    {
         if resultCode != SQLITE_OK {
             return error(unsafelyDescribedBy: db, code: resultCode)
         } else {
             return nil
         }
     }
-    
+
     fileprivate func step(statement: PreparedStatementPtr, columnNames: [CString]) throws -> Row? {
         let res = sqlite3_step(statement.ptr)
         switch res {
@@ -270,8 +292,10 @@ public actor Database {
             throw self.lastError(withCode: res)
         }
     }
-    
-    private func parseValue(in statement: PreparedStatementPtr, at columnIndex: Int32) throws -> SQLiteValue {
+
+    private func parseValue(in statement: PreparedStatementPtr, at columnIndex: Int32) throws
+        -> SQLiteValue
+    {
         switch sqlite3_column_type(statement.ptr, columnIndex) {
         case SQLITE_NULL:
             return .null
@@ -291,13 +315,15 @@ public actor Database {
             } else {
                 .blob(.empty)
             }
-            
+
         default:
             fatalError("Unreachable. SQLite doesn't support data type for column \(columnIndex)")
         }
     }
-    
-    fileprivate func fetchAll(statement: PreparedStatementPtr, columnNames: [CString]) throws -> [Row] {
+
+    fileprivate func fetchAll(statement: PreparedStatementPtr, columnNames: [CString]) throws
+        -> [Row]
+    {
         var result = [Row]()
         while let row = try step(statement: statement, columnNames: columnNames) {
             result.append(row)
@@ -317,13 +343,13 @@ public actor Database {
 public struct Row: Equatable, Sequence {
     public let columns: [String]
     public var values: [SQLiteValue]
-    
+
     public typealias Element = (columnName: String, value: SQLiteValue)
-    
+
     public struct Iterator: IteratorProtocol {
         public typealias Element = Row.Element
         var inner: Zip2Sequence<[String], [SQLiteValue]>.Iterator
-        
+
         public mutating func next() -> Self.Element? {
             return if let (name, value) = inner.next() {
                 (name, value)
@@ -332,11 +358,11 @@ public struct Row: Equatable, Sequence {
             }
         }
     }
-    
+
     public func makeIterator() -> Iterator {
         Iterator(inner: zip(columns, values).makeIterator())
     }
-    
+
     public func decode<T: Decodable>() throws -> T {
         try T(from: SQLDecoder(row: self))
     }
@@ -348,7 +374,7 @@ private struct PreparedStatementPtr: @unchecked Sendable {
 
 private struct CString: @unchecked Sendable {
     var ptr: UnsafePointer<CChar>
-    
+
     func toOwned() -> String {
         String(cString: self.ptr)
     }
@@ -368,7 +394,10 @@ public struct PreparedStatement: ~Copyable, Sendable {
     // Strings are valid until the call to sqlite3_finalize
     private let columnNames: [CString]
 
-    fileprivate init(db: Database, stmt: PreparedStatementPtr, rowidColumn: RowIDColumnSelector, columnNames: [CString]) {
+    fileprivate init(
+        db: Database, stmt: PreparedStatementPtr, rowidColumn: RowIDColumnSelector,
+        columnNames: [CString]
+    ) {
         self.db = db
         self.stmt = stmt
         self.rowidColumn = rowidColumn
@@ -379,17 +408,19 @@ public struct PreparedStatement: ~Copyable, Sendable {
         self.finalized = true
         try await self.db.finalize(statement: self.stmt)
     }
-    
+
     /// Poll-style of fetching results
     public mutating func step() async throws -> Row? {
         try await self.db.step(statement: self.stmt, columnNames: self.columnNames)
     }
-    
+
     public mutating func step<T: Decodable>() async throws -> T? {
         try await step().map { try $0.decode() }
     }
-    
-    private consuming func finalizeAfter<T>(action: (inout Self) async throws -> T) async throws -> T {
+
+    private consuming func finalizeAfter<T>(action: (inout Self) async throws -> T) async throws
+        -> T
+    {
         // There is no async defer blocks, so this mess is emulating it (or the finally block)
         var result: T
         do {
@@ -401,17 +432,18 @@ public struct PreparedStatement: ~Copyable, Sendable {
         try await finalize()
         return result
     }
-    
+
     public consuming func fetchAll() async throws -> [Row] {
         try await finalizeAfter { statement in
-            try await statement.db.fetchAll(statement: statement.stmt, columnNames: statement.columnNames)
+            try await statement.db.fetchAll(
+                statement: statement.stmt, columnNames: statement.columnNames)
         }
     }
 
     public consuming func fetchAll<T: Decodable>() async throws -> [T] {
         try await fetchAll().map { try $0.decode() }
     }
-    
+
     public consuming func fetchOne() async throws -> Row {
         try await finalizeAfter { statement in
             guard let row = try await statement.step() else {
@@ -424,17 +456,17 @@ public struct PreparedStatement: ~Copyable, Sendable {
     public consuming func fetchOne<T: Decodable>() async throws -> T {
         try await fetchOne().decode()
     }
-    
+
     public consuming func fetchOptional() async throws -> Row? {
         try await finalizeAfter { statement in
             try await statement.step()
         }
     }
-    
+
     public consuming func fetchOptional<T: Decodable>() async throws -> T? {
         try await fetchOptional().map { try $0.decode() }
     }
-    
+
     /// Push-style of fetching results
     public consuming func stream() -> AsyncThrowingStream<Row, any Error> {
         // forget self
@@ -442,7 +474,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
         let stmt = self.stmt
         let columnNames = self.columnNames
         let db = self.db
-        
+
         return AsyncThrowingStream { continuation in
             Task {
                 do {
@@ -458,7 +490,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
             }
         }
     }
-    
+
     public consuming func stream<T: Decodable>() -> some AsyncSequence {
         self.stream().map { row async throws -> T in try row.decode() }
     }
@@ -483,46 +515,46 @@ public struct PreparedStatement: ~Copyable, Sendable {
 public struct BoundSQLQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation {
     var query: String
     var bindings: [SQLiteValue]
-    
+
     public typealias StringLiteralType = StaticString
-    
+
     init(raw query: String, bindings: [SQLiteValue]) {
         self.query = query
         self.bindings = bindings
     }
-    
+
     public init(stringLiteral value: Self.StringLiteralType) {
         query = value.description
         bindings = []
     }
-    
-    public struct StringInterpolation : StringInterpolationProtocol {
+
+    public struct StringInterpolation: StringInterpolationProtocol {
         var query: String
         var bindings: [SQLiteValue] = []
-        
+
         public typealias StringLiteralType = StaticString
-        
+
         public init(literalCapacity: Int, interpolationCount: Int) {
             query = ""
             query.reserveCapacity(literalCapacity + interpolationCount)
             bindings = []
             bindings.reserveCapacity(interpolationCount)
         }
-        
+
         public mutating func appendLiteral(_ literal: StaticString) {
             query.append(literal.description)
         }
-        
+
         public mutating func appendInterpolation<T: SQLPrimitiveEncodable>(_ value: T) {
             query += "?"
             bindings.append(value.encode())
         }
-        
+
         public mutating func appendInterpolation(fragment: BoundSQLQuery) {
             query += fragment.query
             bindings += fragment.bindings
         }
-        
+
         public mutating func appendInterpolation(raw: String) {
             query += raw
         }
