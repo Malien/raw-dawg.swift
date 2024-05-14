@@ -267,20 +267,26 @@ final class SQLiteM_swiftTests: XCTestCase {
         ).fetchOne()
         XCTAssertEqual(res, SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
     }
-    
+
     func testCanInterpolateFragment() async throws {
         let db = try await prepareSampleDB()
         let whereClause: BoundQuery = "where f64 > \(1.0)"
-        let res: [Int] = try await db.prepare("select i64 from test \(fragment: whereClause) limit \(1)").fetchAll()
+        let res: [Int] = try await db.prepare(
+            "select i64 from test \(fragment: whereClause) limit \(1)"
+        ).fetchAll()
         XCTAssertEqual(res, [2])
     }
-    
+
     func runReturnsCorrectRowid() async throws {
         let db = try await prepareSampleDB()
-        let insertionStats = try await db.prepare("insert into test values (42, 6.9, 'text', unhex('0x4269'), null)").run()
+        let insertionStats = try await db.prepare(
+            "insert into test values (42, 6.9, 'text', unhex('0x4269'), null)"
+        ).run()
         let lastId: Int64 = try await db.prepare("select max(rowid) from test").fetchOne()
-        XCTAssertEqual(insertionStats, InsertionStats(
-            lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
-        ))
+        XCTAssertEqual(
+            insertionStats,
+            InsertionStats(
+                lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
+            ))
     }
 }

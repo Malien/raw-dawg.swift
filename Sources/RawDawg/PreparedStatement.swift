@@ -1,7 +1,7 @@
 #if canImport(SQLite3)
-import SQLite3
+    import SQLite3
 #else
-import CSQLite
+    import CSQLite
 #endif
 
 internal struct PreparedStatementPtr: @unchecked Sendable {
@@ -130,7 +130,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     public consuming func stream<T: Decodable>() -> some AsyncSequence {
         self.stream().map { row async throws -> T in try row.decode() }
     }
-    
+
     /// Returns last inserted rowid
     public consuming func run() async throws -> InsertionStats {
         try await finalizeAfter { statement in
@@ -154,4 +154,3 @@ public struct PreparedStatement: ~Copyable, Sendable {
         }
     }
 }
-

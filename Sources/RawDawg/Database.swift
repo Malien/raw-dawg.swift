@@ -68,7 +68,7 @@ private func sqlite3_bind_blob64(
 private let SQLITE_STATIC = unsafeBitCast(0, to: sqlite3_destructor_type.self)
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-public struct SQLiteError: Error, CustomStringConvertible {
+public struct SQLiteError: Error, CustomStringConvertible, Sendable {
     public var code: Int32
     public var message: String
 
@@ -77,7 +77,7 @@ public struct SQLiteError: Error, CustomStringConvertible {
     }
 }
 
-public enum InvalidQuery: Error, CustomStringConvertible {
+public enum InvalidQuery: Error, CustomStringConvertible, Sendable {
     case empty
     case bindingMissmatch(expected: Int32, got: Int)
 
@@ -104,13 +104,13 @@ public enum RowIDColumnSelector: Sendable {
     static let rowid: Self = .column(named: "rowid")
 }
 
-public struct InsertionStats: Equatable, Hashable {
+public struct InsertionStats: Equatable, Hashable, Sendable {
     public var lastInsertedRowid: sqlite3_int64
     public var rowsAffected: sqlite3_int64
     public var totalRowsAffected: sqlite3_int64
 }
 
-public enum OpenMode {
+public enum OpenMode: Sendable, Equatable, Hashable {
     case readOnly, readWrite
 }
 
@@ -336,23 +336,24 @@ public actor Database {
         }
         return result
     }
-    
+
     internal func run(statement: PreparedStatementPtr) throws -> InsertionStats {
         let res = sqlite3_step(statement.ptr)
         switch res {
-        case SQLITE_DONE: fallthrough
-        case SQLITE_ROW:
-            let rowsAffected = if #available(macOS 12.3, iOS 15.4, *) {
-                sqlite3_changes64(db)
-            } else {
-                Int64(sqlite3_changes(db))
-            }
-            let totalRowsAffected = if #available(macOS 12.3, iOS 15.4, *) {
-                sqlite3_total_changes64(db)
-            } else {
-                Int64(sqlite3_changes(db))
-            }
-            
+        case SQLITE_DONE, SQLITE_ROW:
+            let rowsAffected =
+                if #available(macOS 12.3, iOS 15.4, *) {
+                    sqlite3_changes64(db)
+                } else {
+                    Int64(sqlite3_changes(db))
+                }
+            let totalRowsAffected =
+                if #available(macOS 12.3, iOS 15.4, *) {
+                    sqlite3_total_changes64(db)
+                } else {
+                    Int64(sqlite3_changes(db))
+                }
+
             return InsertionStats(
                 lastInsertedRowid: sqlite3_last_insert_rowid(db),
                 rowsAffected: rowsAffected,
@@ -374,7 +375,7 @@ public actor Database {
     }
 }
 
-public struct Row: Equatable, Sequence {
+public struct Row: Equatable, Sequence, Sendable {
     public let columns: [String]
     public var values: [SQLiteValue]
 

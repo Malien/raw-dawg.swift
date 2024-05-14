@@ -1,6 +1,7 @@
 import Foundation
 
-public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable {
+public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable, Sendable
+{
     case empty
     case loaded(Data)
     case stream(Never)
@@ -76,7 +77,8 @@ public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable
     }
 }
 
-public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable
+public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable,
+    Sendable
 {
     public init() {}
 
