@@ -7,13 +7,13 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testCanPrepareStatement() async throws {
-        let db = try Database(filename: ":memory:")
+        let db = try Database(filename: ":memory:", mode: .readOnly)
         let stmt = try await db.prepare("SELECT 1")
         try await stmt.finalize()
     }
     
     func testCanSelectInteger() async throws {
-        let db = try Database(filename: ":memory:")
+        let db = try Database(filename: ":memory:", mode: .readOnly)
         var stmt = try await db.prepare("SELECT 1")
         let row = try await stmt.step()!
         XCTAssertEqual(
@@ -23,6 +23,44 @@ final class SQLiteM_swiftTests: XCTestCase {
         try await stmt.finalize()
     }
     
+    func testCanSelectTypedInteger() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var res: Int = try await db.prepare("SELECT 1").fetchOne()
+        XCTAssertEqual(res, 1)
+    }
+    
+    func testCanSelectIntegerEnum() async throws {
+        enum State: Int, Codable {
+            case pending = 0, completed = 1, failed = 2
+        }
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var states: [State] = try await db.prepare("""
+            with cte(state) as (values (0), (1), (2))
+                select state from cte
+            """).fetchAll()
+        XCTAssertEqual(states, [.pending, .completed, .failed])
+    }
+    
+    func testCanSelectStringEnum() async throws {
+        enum State: String, Codable {
+            case pending, completed, failed
+        }
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var states: [State] = try await db.prepare("""
+            with cte(state) as (values ('pending'), ('completed'), ('failed'))
+                select state from cte
+            """).fetchAll()
+        XCTAssertEqual(states, [.pending, .completed, .failed])
+    }
+    
+    func testCantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var statement = try await db.prepare("select 1, 2")
+        try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
+            _ = try await statement.fetchOne() as Int
+        }
+    }
+
     func testCanSelectAllKindsOfThings() async throws {
         let db = try Database(filename: ":memory:")
         var stmt = try await db.prepare("SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil")
@@ -50,6 +88,16 @@ final class SQLiteM_swiftTests: XCTestCase {
             (3, 3.0, 'third', unhex('03'), null);
         """)
         return db
+    }
+    
+    private func assertThrows(statement: consuming PreparedStatement, block: (consuming PreparedStatement) async throws -> Void) async throws {
+        var error: (any Error)? = nil
+        do {
+            try await block(statement)
+        } catch let e {
+            error = e
+        }
+        XCTAssertNotNil(error)
     }
     
     func testCanSelectManyRows() async throws {
@@ -139,14 +187,10 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCanFetchMissingOne() async throws {
         let db = try await prepareSampleDB()
-        let statement = try await db.prepare("select * from test limit 0")
-        var error: (any Error)? = nil
-        do {
+        var statement = try await db.prepare("select * from test limit 0")
+        try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
             _ = try await statement.fetchOne()
-        } catch let e {
-            error = e
         }
-        XCTAssertNotNil(error)
     }
     
     func testCanFetchExistingDecodableOne() async throws {
@@ -157,13 +201,9 @@ final class SQLiteM_swiftTests: XCTestCase {
     
     func testCanFetchMissingDecodableOne() async throws {
         let db = try await prepareSampleDB()
-        let statement = try await db.prepare("select * from test limit 0")
-        var error: (any Error)? = nil
-        do {
+        var statement = try await db.prepare("select * from test limit 0")
+        try await assertThrows(statement: statement) { (statement: consuming PreparedStatement) async throws in
             _ = try await statement.fetchOne() as SpecialRow
-        } catch let e {
-            error = e
         }
-        XCTAssertNotNil(error)
     }
 }
