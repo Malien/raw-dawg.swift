@@ -1,3 +1,5 @@
+import Algorithms
+
 #if canImport(SQLite3)
     import SQLite3
 #else
@@ -25,10 +27,17 @@ public struct NoRowsFetched: Error, CustomStringConvertible {
 public struct PreparedStatement: ~Copyable, Sendable {
     private let db: Database
     private let stmt: PreparedStatementPtr
+    /// I don't really understand swift's restriction on `discard self` being restricted to trivially destructible types.
+    /// Since we can't use `discard self`, here's the flag, that `.finalize()` was called explicitly before.
     private var finalized = false
+    /// Whether or not we've exhausted all of the rows via the `.step()` function.
+    /// As per sqlite docs. After `SQLITE_DONE` is yielded from `sqlite3_step`, further calls to step are prohibited
+    /// (given that `sqlite3_reset` isn't called before that)
+    private var finished = false
     private let rowidColumn: RowIDColumnSelector
-    // Strings are valid until the call to sqlite3_finalize
-    private let columnNames: [CString]
+    /// ~~C Strings are valid until the call to `sqlite3_finalize`~~
+    ///  These are Swift string now. Just to avoid conversions on every `.step()` call
+    private let columnNames: [String]
 
     internal init(
         db: Database, stmt: PreparedStatementPtr, rowidColumn: RowIDColumnSelector,
@@ -37,7 +46,8 @@ public struct PreparedStatement: ~Copyable, Sendable {
         self.db = db
         self.stmt = stmt
         self.rowidColumn = rowidColumn
-        self.columnNames = columnNames
+        // We might not need to copy names into swift strings in the future, for now, we do
+        self.columnNames = columnNames.map { String(cString: $0.ptr) }
     }
 
     public consuming func finalize() async throws {
@@ -47,7 +57,17 @@ public struct PreparedStatement: ~Copyable, Sendable {
 
     /// Poll-style of fetching results
     public mutating func step() async throws -> Row? {
-        try await self.db.step(statement: self.stmt, columnNames: self.columnNames)
+        if finished {
+            return nil
+        }
+        if let values = try await self.db.step(
+            statement: self.stmt, columnCount: self.columnNames.count)
+        {
+            return Row(columns: columnNames, values: values[...])
+        } else {
+            finished = true
+            return nil
+        }
     }
 
     public mutating func step<T: Decodable>() async throws -> T? {
@@ -70,9 +90,14 @@ public struct PreparedStatement: ~Copyable, Sendable {
     }
 
     public consuming func fetchAll() async throws -> [Row] {
-        try await finalizeAfter { statement in
+        let columns = self.columnNames
+        return try await finalizeAfter { statement in
             try await statement.db.fetchAll(
-                statement: statement.stmt, columnNames: statement.columnNames)
+                statement: statement.stmt, columnCount: statement.columnNames.count
+            )
+            .chunks(ofCount: columns.count).map {
+                Row(columns: columns, values: $0)
+            }
         }
     }
 
@@ -103,33 +128,10 @@ public struct PreparedStatement: ~Copyable, Sendable {
         try await fetchOptional().map { try $0.decode() }
     }
 
-    /// Push-style of fetching results
-    public consuming func stream() -> AsyncThrowingStream<Row, any Error> {
-        // forget self
-        self.finalized = true
-        let stmt = self.stmt
-        let columnNames = self.columnNames
-        let db = self.db
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    while let row = try await db.step(statement: stmt, columnNames: columnNames) {
-                        continuation.yield(row)
-                    }
-                } catch let e {
-                    try? await db.finalize(statement: stmt)
-                    continuation.finish(throwing: e)
-                    return
-                }
-                try await db.finalize(statement: stmt)
-            }
-        }
-    }
-
-    public consuming func stream<T: Decodable>() -> some AsyncSequence {
-        self.stream().map { row async throws -> T in try row.decode() }
-    }
+    //     I'm not comfortable with this API
+    //    /// Push-style of fetching results
+    //    public consuming func stream() -> AsyncThrowingStream<Row, any Error>
+    //    public consuming func stream<T: Decodable>() -> some AsyncSequence
 
     /// Returns last inserted rowid
     @discardableResult

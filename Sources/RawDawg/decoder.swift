@@ -27,7 +27,7 @@ public struct SQLDecoder: Decoder {
                         "Single value container for SQL row deserialization expects to be ran on result set of size 1, not \(row.values.count)"
                 ))
         }
-        return ValueDecodingContainer(value: row.values[0], codingPath: [])
+        return ValueDecodingContainer(value: row[valueAt: 0], codingPath: [])
     }
 }
 

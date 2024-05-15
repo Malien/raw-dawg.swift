@@ -14,7 +14,7 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiv
         self = .loaded(Data(buffer: buffer))
     }
 
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         guard case .blob(let blob) = primitive else {
             return nil
         }
@@ -58,7 +58,7 @@ public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable
     case text(String)
     case blob(SQLiteBlob)
 
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         self = primitive
     }
 
@@ -82,7 +82,7 @@ public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQ
 {
     public init() {}
 
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         guard case .null = primitive else {
             return nil
         }
@@ -104,12 +104,12 @@ public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQ
     }
 }
 
-protocol SQLPrimitiveDecodable {
+public protocol SQLPrimitiveDecodable {
     init?(fromSQL primitive: SQLiteValue)
 }
 
 extension Optional: SQLPrimitiveDecodable where Wrapped: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         if case .null = primitive {
             self = .none
         } else if let inner = Wrapped.init(fromSQL: primitive) {
@@ -121,7 +121,7 @@ extension Optional: SQLPrimitiveDecodable where Wrapped: SQLPrimitiveDecodable {
 }
 
 extension Bool: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         switch primitive {
         case .integer(0):
             self = true
@@ -134,7 +134,7 @@ extension Bool: SQLPrimitiveDecodable {
 }
 
 extension String: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         guard case .text(let string) = primitive else {
             return nil
         }
@@ -143,7 +143,7 @@ extension String: SQLPrimitiveDecodable {
 }
 
 extension Double: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         switch primitive {
         case .integer(let value):
             self = Double(value)
@@ -156,7 +156,7 @@ extension Double: SQLPrimitiveDecodable {
 }
 
 extension Float: SQLPrimitiveDecodable {
-    init?(fromSQL primitive: SQLiteValue) {
+    public init?(fromSQL primitive: SQLiteValue) {
         guard case .float(let double) = primitive else {
             return nil
         }
@@ -175,7 +175,7 @@ extension FixedWidthInteger {
         self.init(exactly: fp)
     }
 
-    init?(fromSQL primitive: SQLiteValue) where Self: SignedInteger {
+    public init?(fromSQL primitive: SQLiteValue) where Self: SignedInteger {
         switch primitive {
         case .integer(let value)
         where (Self.bitWidth >= Int64.bitWidth || value <= Int64(Self.max)):
@@ -187,7 +187,7 @@ extension FixedWidthInteger {
         }
     }
 
-    init?(fromSQL primitive: SQLiteValue) where Self: UnsignedInteger {
+    public init?(fromSQL primitive: SQLiteValue) where Self: UnsignedInteger {
         switch primitive {
         case .integer(let value)
         where value > 0 && (Self.bitWidth >= Int64.bitWidth || value <= Int64(Self.max)):

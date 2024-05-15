@@ -282,16 +282,15 @@ public actor Database {
         }
     }
 
-    internal func step(statement: PreparedStatementPtr, columnNames: [CString]) throws -> Row? {
+    internal func step(statement: PreparedStatementPtr, columnCount: Int) throws -> [SQLiteValue]? {
         let res = sqlite3_step(statement.ptr)
         switch res {
         case SQLITE_DONE:
             return nil
         case SQLITE_ROW:
-            let values = try columnNames.indices.map {
+            return try (0..<columnCount).map {
                 try self.parseValue(in: statement, at: Int32($0))
             }
-            return Row(columns: columnNames.map { $0.toOwned() }, values: values)
         case SQLITE_BUSY:
             fallthrough
         default:
@@ -327,12 +326,12 @@ public actor Database {
         }
     }
 
-    internal func fetchAll(statement: PreparedStatementPtr, columnNames: [CString]) throws
-        -> [Row]
+    internal func fetchAll(statement: PreparedStatementPtr, columnCount: Int) throws
+        -> [SQLiteValue]
     {
-        var result = [Row]()
-        while let row = try step(statement: statement, columnNames: columnNames) {
-            result.append(row)
+        var result = [SQLiteValue]()
+        while let row = try step(statement: statement, columnCount: columnCount) {
+            result.append(contentsOf: row)
         }
         return result
     }
@@ -372,33 +371,5 @@ public actor Database {
         if let error = Self.error(unsafelyDescribedBy: db, unlessOK: sqlite3_close(db)) {
             log.error("Database close failed. \(error)")
         }
-    }
-}
-
-public struct Row: Equatable, Sequence, Sendable {
-    public let columns: [String]
-    public var values: [SQLiteValue]
-
-    public typealias Element = (columnName: String, value: SQLiteValue)
-
-    public struct Iterator: IteratorProtocol {
-        public typealias Element = Row.Element
-        var inner: Zip2Sequence<[String], [SQLiteValue]>.Iterator
-
-        public mutating func next() -> Self.Element? {
-            return if let (name, value) = inner.next() {
-                (name, value)
-            } else {
-                nil
-            }
-        }
-    }
-
-    public func makeIterator() -> Iterator {
-        Iterator(inner: zip(columns, values).makeIterator())
-    }
-
-    public func decode<T: Decodable>() throws -> T {
-        try T(from: SQLDecoder(row: self))
     }
 }

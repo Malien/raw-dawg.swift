@@ -3,19 +3,8 @@
 
 import PackageDescription
 
-var packageDeps: [Package.Dependency] = [
-    .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0")
-]
-#if !canImport(SQLite3)
-    packageDeps.append(.package(url: "https://github.com/sbooth/CSQLite.git", from: "3.45.3"))
-#endif
-
-var targetDeps: [Target.Dependency] = [
-    .product(name: "Logging", package: "swift-log")
-]
-#if !canImport(SQLite3)
-    packageDeps.append("CSQLite")
-#endif
+// Aka. the platforms that don't ship SQLite3 swift package by default
+let nonApplePlatforms: [Platform] = [.linux, .windows, .android, .openbsd, .wasi]
 
 let package = Package(
     name: "raw-dawg",
@@ -30,13 +19,24 @@ let package = Package(
             targets: ["RawDawg"]
         )
     ],
-    dependencies: packageDeps,
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+        .package(
+            url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
+        .package(url: "https://github.com/sbooth/CSQLite.git", from: "3.45.3"),
+    ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
             name: "RawDawg",
-            dependencies: targetDeps),
+            dependencies: [
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "Algorithms", package: "swift-algorithms"),
+                .product(
+                    name: "CSQLite", package: "CSQLite",
+                    condition: .when(platforms: nonApplePlatforms)),
+            ]),
         .testTarget(
             name: "RawDawgTests",
             dependencies: ["RawDawg"]),
