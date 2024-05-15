@@ -95,4 +95,3 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
         try T(from: SQLDecoder(row: self))
     }
 }
-

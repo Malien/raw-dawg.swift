@@ -68,29 +68,67 @@ private func sqlite3_bind_blob64(
 private let SQLITE_STATIC = unsafeBitCast(0, to: sqlite3_destructor_type.self)
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-public struct SQLiteError: Error, CustomStringConvertible, Sendable {
-    public var code: Int32
-    public var message: String
-
-    public var description: String {
-        return "SQLite Error \(code): \(message)"
+public enum SQLiteError: Error, CustomStringConvertible, Sendable {
+    case unknown(code: Int32, message: String)
+    case openDatabase(code: Int32, message: String, filename: String, mode: OpenMode)
+    case prepareStatement(code: Int32, message: String, query: BoundQuery)
+    case emptyQuery(query: BoundQuery)
+    case bindingMissmatch(query: BoundQuery, expected: Int32, got: Int)
+    case noRowsFetched
+    
+    internal enum Context {
+        case unknown
+        case openDatabase(filename: String, mode: OpenMode)
+        case prepareStatement(query: BoundQuery)
     }
-}
-
-public enum InvalidQuery: Error, CustomStringConvertible, Sendable {
-    case empty
-    case bindingMissmatch(expected: Int32, got: Int)
-
-    public var description: String {
-        return switch self {
-        case .empty:
-            "Cannot prepare an empty query."
-        case let .bindingMissmatch(expected: expected, got: got) where got < expected:
-            "Insufficient number of bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided"
-        case let .bindingMissmatch(expected: expected, got: got):
-            "Too many bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided"
+    internal init (sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {
+        switch context {
+        case .unknown:
+            self = .unknown(code: code, message: message)
+        case .openDatabase(filename: let filename, mode: let mode):
+            self = .openDatabase(code: code, message: message, filename: filename, mode: mode)
+        case .prepareStatement(query: let query):
+            self = .prepareStatement(code: code, message: message, query: query)
         }
     }
+
+    public var description: String {
+        switch self {
+        case .unknown(code: let code, message: let message): "SQLite Error \(code): \(message)"
+        case .openDatabase(code: let code, message: let message, filename: let filename, mode: let mode):
+            "SQLite Error \(code): \(message) when trying to open a database (filename=\(filename), mode=\(mode))"
+        case .prepareStatement(code: let code, message: let message, query: let query):
+            "SQLite Error \(code): \(message) in \(query.query) \(query.bindings)"
+        case .emptyQuery(query: let query):
+            "Cannot prepare an empty query. \(query.query) \(query.bindings)"
+        case let .bindingMissmatch(query: query, expected: expected, got: got) where got < expected:
+            "Insufficient number of bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided. In query \(query.query) \(query.bindings)"
+        case let .bindingMissmatch(query: query, expected: expected, got: got):
+            "Too many bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided. In query \(query.query) \(query.bindings)"
+        case .noRowsFetched:
+            "When calling .fetchOne() no rows were returned"
+        }
+    }
+    
+    public var sqliteErrorCode: Int32? {
+        switch self {
+        case .unknown(code: let code, message: _): code
+        case .openDatabase(code: let code, message: _, filename: _, mode: _): code
+        case .prepareStatement(code: let code, message: _, query: _): code
+        default: nil
+        }
+    }
+    public var sqliteMessage: String? {
+        switch self {
+        case .unknown(code: _, message: let message): message
+        case .openDatabase(code: _, message: let message, filename: _, mode: _): message
+        case .prepareStatement(code: _, message: let message, query: _): message
+        default: nil
+        }
+    }
+    
+    public var code: Int32 { sqliteErrorCode ?? SQLITE_ERROR }
+    public var message: String { sqliteMessage ?? description }
 }
 
 internal let log = Logger(label: "io.github.malien.raw-dawg")
@@ -111,22 +149,36 @@ public struct InsertionStats: Equatable, Hashable, Sendable {
 }
 
 public enum OpenMode: Sendable, Equatable, Hashable {
-    case readOnly, readWrite
+    case readOnly, readWrite(create: Bool)
+    public static var readWrite = Self.readWrite(create: true)
 }
 
 public actor Database {
     fileprivate let db: OpaquePointer
 
-    public init(filename: String, mode: OpenMode = .readWrite, create: Bool = false) throws {
+    public init(filename: String, mode: OpenMode = .readWrite) throws {
+        // Apple's SQLite3 by the looks of things is either compiled without SQLITE_OMIT_AUTOINIT or
+        // is doing initialization by itself (likely as a dynamically linked library constructor).
+        // On Apple platforms we just link to /usr/lib/libsqlite3.dylib, otherwise we statically compile
+        // sqlite3's amalgamation into the binary (via CSQLite swift package)
+        // CSQLite is explicitly compiled with SQLITE_OMIT_AUTOINIT as per sqlite's recommendation
+        // as such we need to call `sqlite3_initialize`, at least once. Any subsequent call to
+        // `sqlite3_initialize` is a no-op
+        #if !canImport(SQLite3)
+            let initResult = sqlite3_initialize()
+            if initResult != SQLITE_OK {
+                throw SQLiteError(code: initResult, message: "Failed to initialize SQLite")
+            }
+        #endif
         var db: OpaquePointer? = nil
         var flags: Int32 = 0
-        if mode == .readOnly {
+        switch mode {
+        case .readOnly:
             flags |= SQLITE_OPEN_READONLY
-        } else {
+        case .readWrite(create: false):
             flags |= SQLITE_OPEN_READWRITE
-        }
-        if create {
-            flags |= SQLITE_OPEN_CREATE
+        case .readWrite(create: true):
+            flags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
         }
         if sqlite3_threadsafe() != 0 {
             flags |= SQLITE_OPEN_NOMUTEX
@@ -139,9 +191,15 @@ public actor Database {
             )
         }
 
-        if let error = Self.error(unsafelyDescribedBy: db, unlessOK: res) {
+        if let error = Self.error(
+            unsafelyDescribedBy: db, unlessOK: res,
+            context: .openDatabase(filename: filename, mode: mode))
+        {
             let res = sqlite3_close_v2(db)
-            if let closeError = Self.error(unsafelyDescribedBy: db, unlessOK: res) {
+            if let closeError = Self.error(
+                unsafelyDescribedBy: db, unlessOK: res,
+                context: .openDatabase(filename: filename, mode: mode))
+            {
                 log.error(
                     "Database open failed, during which closing the database also failed. \(closeError)"
                 )
@@ -160,7 +218,7 @@ public actor Database {
         if persistent {
             flags |= UInt32(SQLITE_PREPARE_PERSISTENT)
         }
-        try throwing {
+        try throwing(context: .prepareStatement(query: query)) {
             sqlite3_prepare_v3(
                 db: self.db,
                 zSql: query.query,
@@ -171,7 +229,7 @@ public actor Database {
             )
         }
         if stmt == nil {
-            throw InvalidQuery.empty
+            throw SQLiteError.emptyQuery(query: query)
         }
         let columnCount = sqlite3_column_count(stmt)
         let columnNames = (0..<columnCount).map {
@@ -183,7 +241,7 @@ public actor Database {
         }
         let bindingCount = sqlite3_bind_parameter_count(stmt)
         guard bindingCount == query.bindings.count else {
-            throw InvalidQuery.bindingMissmatch(expected: bindingCount, got: query.bindings.count)
+            throw SQLiteError.bindingMissmatch(query: query, expected: bindingCount, got: query.bindings.count)
         }
         for (position, binding) in zip(Int32(1)..., query.bindings) {
             try throwing {
@@ -226,8 +284,8 @@ public actor Database {
         }
     }
 
-    private func throwing(_ action: () -> Int32) throws {
-        if let error = self.error(unlessOK: action()) {
+    private func throwing(context: SQLiteError.Context = .unknown, _ action: () -> Int32) throws {
+        if let error = self.error(unlessOK: action(), context: context) {
             throw error
         }
     }
@@ -242,41 +300,46 @@ public actor Database {
         return self.lastError(withCode: sqlite3_errcode(self.db))
     }
 
-    func lastError(withCode code: Int32) -> SQLiteError {
+    func lastError(withCode code: Int32, context: SQLiteError.Context = .unknown) -> SQLiteError {
         let message =
             if let cMsgStr = sqlite3_errmsg(self.db) {
                 String(cString: cMsgStr)
             } else {
                 "No error message available"
             }
-        return SQLiteError(code: code, message: message)
+        return SQLiteError(sqliteErrorCode: code, message: message, context: context)
     }
 
-    func error(unlessOK resultCode: Int32) -> SQLiteError? {
+    func error(unlessOK resultCode: Int32, context: SQLiteError.Context = .unknown) -> SQLiteError? {
         if resultCode != SQLITE_OK {
-            return self.lastError(withCode: resultCode)
+            return self.lastError(withCode: resultCode, context: context)
         } else {
             return nil
         }
     }
 
     // This constructor is safe to call only from the thread (actor) that manages the database connection
-    private static func error(unsafelyDescribedBy db: OpaquePointer, code: Int32) -> SQLiteError {
+    private static func error(
+        unsafelyDescribedBy db: OpaquePointer, code: Int32, context: SQLiteError.Context = .unknown
+    ) -> SQLiteError {
         let message =
             if let cMsgStr = sqlite3_errmsg(db) {
                 String(cString: cMsgStr)
             } else {
                 "No error message available"
             }
-        return SQLiteError(code: code, message: message)
+        return SQLiteError(sqliteErrorCode: code, message: message, context: context)
     }
 
     // This constructor is safe to call only from the thread (actor) that manages the database connection
-    private static func error(unsafelyDescribedBy db: OpaquePointer, unlessOK resultCode: Int32)
+    private static func error(
+        unsafelyDescribedBy db: OpaquePointer, unlessOK resultCode: Int32,
+        context: SQLiteError.Context = .unknown
+    )
         -> SQLiteError?
     {
         if resultCode != SQLITE_OK {
-            return error(unsafelyDescribedBy: db, code: resultCode)
+            return error(unsafelyDescribedBy: db, code: resultCode, context: context)
         } else {
             return nil
         }

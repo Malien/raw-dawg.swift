@@ -18,12 +18,6 @@ internal struct CString: @unchecked Sendable {
     }
 }
 
-public struct NoRowsFetched: Error, CustomStringConvertible {
-    public var description: String {
-        "When calling .fetchOne() no rows were returned"
-    }
-}
-
 public struct PreparedStatement: ~Copyable, Sendable {
     private let db: Database
     private let stmt: PreparedStatementPtr
@@ -108,7 +102,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     public consuming func fetchOne() async throws -> Row {
         try await finalizeAfter { statement in
             guard let row = try await statement.step() else {
-                throw NoRowsFetched()
+                throw SQLiteError.noRowsFetched
             }
             return row
         }

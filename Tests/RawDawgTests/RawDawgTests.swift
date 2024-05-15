@@ -289,4 +289,43 @@ final class SQLiteM_swiftTests: XCTestCase {
                 lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
             ))
     }
+    
+    func testRealWorldUse1() async throws {
+        let input = [
+            "Aaran", "Aaren", "Aarez", "Aarman", "Aaron", "Aaron-James", "Aarron", "Aaryan",
+            "Aaryn", "Aayan", "Aazaan", "Abaan", "Abbas", "Abdallah", "Abdalroof", "Abdihakim",
+            "Abdirahman", "Abdisalam", "Abdul", "Abdul-Aziz", "Abdulbasir", "Abdulkadir",
+            "Abdulkarem", "Abdulkhader", "Abdullah", "Abdul-Majeed", "Abdulmalik", "Abdul-Rehman",
+            "Abdur", "Abdurraheem", "Abdur-Rahman", "Abdur-Rehmaan", "Abel", "Abhinav",
+            "Abhisumant", "Abid", "Abir", "Abraham", "Abu", "Abubakar", "Ace", "Adain", "Adam",
+            "Adam-James", "Addison", "Addisson", "Adegbola", "Adegbolahan", "Aden", "Adenn", "Adie",
+            "Adil", "Aditya", "Adnan", "foo",
+        ]
+        
+        let valuesClause = "(" + input.map{ "'\($0)'" }.joined(separator: "), (") + ")"
+
+        let db = try Database(filename: ":memory:")
+        try await db.execute("""
+            create table if not exists migrations (
+                idx integer not null,
+                applied_at text not null
+            );
+            begin;
+            create table bazinga (
+                id integer primary key autoincrement,
+                name text not null
+            );
+            create table users(first_name text);
+            insert into migrations (idx, applied_at) values (1, datetime());
+            commit;
+            insert into users(first_name) values \(valuesClause)
+            """)
+    
+        struct MyResponse: Codable, Equatable {
+            var usernames: String
+        }
+        
+        let res: [MyResponse] = try await db.prepare("select first_name as usernames from users").fetchAll()
+        XCTAssertEqual(res, input.map { MyResponse(usernames: $0) })
+    }
 }
