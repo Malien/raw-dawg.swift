@@ -7,6 +7,12 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+## [0.0.6] - 2024-05-18
+
+### Added
+- Conformance of Swift's `Date` to `SQLPrimitiveDecodable`. Note, dates are not encodable, since the format (unix epoch/floats/integers/iso8601 strings) is up to the user to decide
+- Added support for decoding `Date`s from SQL rows
+
 ## [0.0.5] - 2024-05-15
 
 ### Added
