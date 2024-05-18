@@ -12,7 +12,7 @@ Cause there's nothing wrong with writing raw SQL
 - [ ] `@AsyncRowDecodable` macro to conform automagically
 - [ ] Additional dynamic query building capabilities(?)
 - [ ] Pooling
-- [ ] Date-time support
+- [X] Date-time support
 - [ ] URL support
 - [ ] SharedStatement
 - [ ] Stabilize API / Usability testing

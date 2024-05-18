@@ -72,7 +72,8 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 ### Changed
 - Added `Sendable` constraints to all type-safe types (`PreparedStatement`, `BoundQuery`, `Row`, `SQLNull`, `SQLiteBlob`, `SQLiteValue`, `OpenMode`, `InsertionStats`, error types)
 
-[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.3...HEAD
+[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.6...HEAD
+[0.0.6]: https://github.com/malien/raw-dawg.swift/compare/0.0.5...0.0.6
 [0.0.5]: https://github.com/malien/raw-dawg.swift/compare/0.0.4...0.0.5
 [0.0.4]: https://github.com/malien/raw-dawg.swift/compare/0.0.3...0.0.4
 [0.0.3]: https://github.com/malien/raw-dawg.swift/compare/0.0.2...0.0.3
