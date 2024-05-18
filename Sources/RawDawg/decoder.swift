@@ -1,3 +1,5 @@
+import Foundation
+
 public struct SQLDecoder: Decoder {
     public var codingPath: [any CodingKey] = []
     let row: Row
@@ -98,7 +100,7 @@ private struct RowDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProto
     private func decode<T: SQLPrimitiveDecodable>(primitiveForKey key: Key) throws -> T {
         let value = try get(key: key)
         guard let decoded = T.init(fromSQL: value) else {
-            throw Self.typeError(forConversionTo: Bool.self, of: value, forKey: key)
+            throw Self.typeError(forConversionTo: T.self, of: value, forKey: key)
         }
         return decoded
     }
@@ -164,6 +166,11 @@ private struct RowDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProto
     }
 
     func decode<T>(_ type: T.Type, forKey key: Key) throws -> T where T: Decodable {
+        if type == Date.self {
+            let date = try decode(primitiveForKey: key) as Date
+            return date as! T
+        }
+        
         let decoder = SQLValueDecoder(
             value: try get(key: key),
             codingPath: [key])

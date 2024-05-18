@@ -328,4 +328,29 @@ final class SQLiteM_swiftTests: XCTestCase {
         let res: [MyResponse] = try await db.prepare("select first_name as usernames from users").fetchAll()
         XCTAssertEqual(res, input.map { MyResponse(usernames: $0) })
     }
+    
+    func testWillDecodeDates() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        
+        struct DateRow: Equatable, Codable {
+            var epochSeconds: Date
+            var epochPreciseSeconds: Date
+            var iso8601: Date
+        }
+        
+        let row: DateRow = try await db.prepare("""
+            with cte(epochSeconds, epochPreciseSeconds, iso8601) as
+                (values (1716041456, 1716041456.069, '2024-05-18T14:11:35.069Z'))
+            select * from cte
+            """).fetchOne()
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        
+        XCTAssertEqual(row, DateRow(
+            epochSeconds: Date(timeIntervalSince1970: 1716041456),
+            epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
+            iso8601: formatter.date(from: "2024-05-18T14:11:35.069Z")!
+        ))
+    }
 }

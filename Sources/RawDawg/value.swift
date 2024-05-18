@@ -212,6 +212,37 @@ extension UInt16: SQLPrimitiveDecodable {}
 extension UInt32: SQLPrimitiveDecodable {}
 extension UInt64: SQLPrimitiveDecodable {}
 
+extension Date: SQLPrimitiveDecodable {
+    /// Conversions are per how [SQLite can store date/time/datetime values](https://www.sqlite.org/lang_datefunc.html)
+    /// All numeric values are treated as unix epoch. If you are dealing in julian calendar days I am trully sorry.
+    /// Write your own smal 'lil type and conform it to `SQLPrimitiveDecodable`/`Codable`.
+    public init?(fromSQL primitive: SQLiteValue) {
+        switch primitive {
+        case .null, .blob(_):
+            return nil
+        case .integer(let unixEpoch):
+            self.init(timeIntervalSince1970: Double(unixEpoch))
+        case .float(let unixEpoch):
+            self.init(timeIntervalSince1970: unixEpoch)
+        case .text(let iso8601String):
+            if #available(macOS 12.0, *) {
+                try? self.init(
+                    iso8601String,
+                    strategy: ISO8601FormatStyle(includingFractionalSeconds: true)
+                )
+            } else {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions.insert(.withFractionalSeconds)
+                if let date = formatter.date(from: iso8601String) {
+                    self = date
+                } else {
+                    return nil
+                }
+            }
+        }
+    }
+}
+
 public protocol SQLPrimitiveEncodable {
     consuming func encode() -> SQLiteValue
 }
