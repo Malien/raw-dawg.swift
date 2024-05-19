@@ -21,7 +21,7 @@ Cause there's nothing wrong with writing raw SQL
 ## Usage
 Add dependancy to the `Package.swift`
 ```swift
-.package(url: "https://github.com/malien/raw-dawg.swift.git", from: "0.0.1")
+.package(url: "https://github.com/malien/raw-dawg.swift.git", exact: "0.0.7")
 ```
 And don't forget to add 
 ```swift

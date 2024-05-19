@@ -7,6 +7,14 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+## [0.0.7] - 2024-05-19
+
+### Fixed
+- Date time parsing is now SQLite friendly
+
+### Cahnged
+- Better deserialization of primitives from rows
+
 ## [0.0.6] - 2024-05-18
 
 ### Added
@@ -72,7 +80,8 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 ### Changed
 - Added `Sendable` constraints to all type-safe types (`PreparedStatement`, `BoundQuery`, `Row`, `SQLNull`, `SQLiteBlob`, `SQLiteValue`, `OpenMode`, `InsertionStats`, error types)
 
-[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.6...HEAD
+[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.7...HEAD
+[0.0.6]: https://github.com/malien/raw-dawg.swift/compare/0.0.6...0.0.7
 [0.0.6]: https://github.com/malien/raw-dawg.swift/compare/0.0.5...0.0.6
 [0.0.5]: https://github.com/malien/raw-dawg.swift/compare/0.0.4...0.0.5
 [0.0.4]: https://github.com/malien/raw-dawg.swift/compare/0.0.3...0.0.4

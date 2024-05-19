@@ -289,7 +289,7 @@ final class SQLiteM_swiftTests: XCTestCase {
                 lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
             ))
     }
-    
+
     func testRealWorldUse1() async throws {
         let input = [
             "Aaran", "Aaren", "Aarez", "Aarman", "Aaron", "Aaron-James", "Aarron", "Aaryan",
@@ -301,11 +301,12 @@ final class SQLiteM_swiftTests: XCTestCase {
             "Adam-James", "Addison", "Addisson", "Adegbola", "Adegbolahan", "Aden", "Adenn", "Adie",
             "Adil", "Aditya", "Adnan", "foo",
         ]
-        
-        let valuesClause = "(" + input.map{ "'\($0)'" }.joined(separator: "), (") + ")"
+
+        let valuesClause = "(" + input.map { "'\($0)'" }.joined(separator: "), (") + ")"
 
         let db = try Database(filename: ":memory:")
-        try await db.execute("""
+        try await db.execute(
+            """
             create table if not exists migrations (
                 idx integer not null,
                 applied_at text not null
@@ -320,37 +321,58 @@ final class SQLiteM_swiftTests: XCTestCase {
             commit;
             insert into users(first_name) values \(valuesClause)
             """)
-    
+
         struct MyResponse: Codable, Equatable {
             var usernames: String
         }
-        
-        let res: [MyResponse] = try await db.prepare("select first_name as usernames from users").fetchAll()
+
+        let res: [MyResponse] = try await db.prepare("select first_name as usernames from users")
+            .fetchAll()
         XCTAssertEqual(res, input.map { MyResponse(usernames: $0) })
     }
-    
+
     func testWillDecodeDates() async throws {
         let db = try Database(filename: ":memory:", mode: .readOnly)
-        
+
         struct DateRow: Equatable, Codable {
             var epochSeconds: Date
             var epochPreciseSeconds: Date
             var iso8601: Date
         }
-        
-        let row: DateRow = try await db.prepare("""
+
+        let row: DateRow = try await db.prepare(
+            """
             with cte(epochSeconds, epochPreciseSeconds, iso8601) as
                 (values (1716041456, 1716041456.069, '2024-05-18T14:11:35.069Z'))
             select * from cte
-            """).fetchOne()
-        
+            """
+        ).fetchOne()
+
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions.insert(.withFractionalSeconds)
-        
-        XCTAssertEqual(row, DateRow(
-            epochSeconds: Date(timeIntervalSince1970: 1716041456),
-            epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
-            iso8601: formatter.date(from: "2024-05-18T14:11:35.069Z")!
-        ))
+
+        XCTAssertEqual(
+            row,
+            DateRow(
+                epochSeconds: Date(timeIntervalSince1970: 1_716_041_456),
+                epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
+                iso8601: formatter.date(from: "2024-05-18T14:11:35.069Z")!
+            ))
+    }
+
+    // SQLite's `datetime` functions will return iso8601 strings without "Z" time zone.
+    // Swift's Date parsing, understandably, doesn't like dates that don't end on "Z" or "±HH:MM".
+    // My driver has to handle these cases
+    func testWillSQLiteDates() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let date: Date = try await db.prepare(
+            "select datetime('2024-02-03 08:12:23.032Z', 'subsec')"
+        ).fetchOne()
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        formatter.timeZone = TimeZone(identifier: "UTC")!
+
+        XCTAssertEqual(date, formatter.date(from: "2024-02-03T08:12:23.032Z"))
     }
 }

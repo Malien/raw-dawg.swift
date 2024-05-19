@@ -1,4 +1,5 @@
 import Algorithms
+import Foundation
 
 #if canImport(SQLite3)
     import SQLite3
@@ -96,7 +97,11 @@ public struct PreparedStatement: ~Copyable, Sendable {
     }
 
     public consuming func fetchAll<T: Decodable>() async throws -> [T] {
-        try await fetchAll().map { try $0.decode() }
+        if let type = T.self as? SQLPrimitiveDecodable.Type {
+            try guardSingleColumn()
+            return try await fetchAll().map { try $0.decode(valueAt: 0, as: type) as! T }
+        }
+        return try await fetchAll().map { try $0.decode() }
     }
 
     public consuming func fetchOne() async throws -> Row {
@@ -109,7 +114,11 @@ public struct PreparedStatement: ~Copyable, Sendable {
     }
 
     public consuming func fetchOne<T: Decodable>() async throws -> T {
-        try await fetchOne().decode()
+        if let type = T.self as? SQLPrimitiveDecodable.Type {
+            try guardSingleColumn()
+            return try await fetchOne().decode(valueAt: 0, as: type) as! T
+        }
+        return try await fetchOne().decode()
     }
 
     public consuming func fetchOptional() async throws -> Row? {
@@ -119,7 +128,17 @@ public struct PreparedStatement: ~Copyable, Sendable {
     }
 
     public consuming func fetchOptional<T: Decodable>() async throws -> T? {
-        try await fetchOptional().map { try $0.decode() }
+        if let type = T.self as? SQLPrimitiveDecodable.Type {
+            try guardSingleColumn()
+            return try await fetchOptional().map { try $0.decode(valueAt: 0, as: type) as! T }
+        }
+        return try await fetchOptional().map { try $0.decode() }
+    }
+
+    private func guardSingleColumn() throws {
+        guard columnNames.count == 1 else {
+            throw SQLiteError.notSingleValue(columnCount: columnNames.count)
+        }
     }
 
     //     I'm not comfortable with this API

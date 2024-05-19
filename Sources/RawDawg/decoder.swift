@@ -170,7 +170,7 @@ private struct RowDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProto
             let date = try decode(primitiveForKey: key) as Date
             return date as! T
         }
-        
+
         let decoder = SQLValueDecoder(
             value: try get(key: key),
             codingPath: [key])
@@ -208,7 +208,7 @@ private struct ValueDecodingContainer: SingleValueDecodingContainer {
     var value: SQLiteValue
     var codingPath: [any CodingKey]
 
-    private func decode<T: SQLPrimitiveDecodable>(fromPrimitive value: SQLiteValue) throws -> T {
+    private func decodePrimitive<T: SQLPrimitiveDecodable>() throws -> T {
         guard let decoded = T(fromSQL: value) else {
             throw DecodingError.typeMismatch(
                 T.self,
@@ -224,62 +224,65 @@ private struct ValueDecodingContainer: SingleValueDecodingContainer {
     }
 
     func decode(_ type: Bool.Type) throws -> Bool {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: String.Type) throws -> String {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Double.Type) throws -> Double {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Float.Type) throws -> Float {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Int.Type) throws -> Int {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Int8.Type) throws -> Int8 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Int16.Type) throws -> Int16 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Int32.Type) throws -> Int32 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: Int64.Type) throws -> Int64 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: UInt.Type) throws -> UInt {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: UInt8.Type) throws -> UInt8 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: UInt16.Type) throws -> UInt16 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: UInt32.Type) throws -> UInt32 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode(_ type: UInt64.Type) throws -> UInt64 {
-        try decode(fromPrimitive: value)
+        try decodePrimitive()
     }
 
     func decode<T>(_ type: T.Type) throws -> T where T: Decodable {
-        try T.init(from: SQLValueDecoder(value: value, codingPath: codingPath))
+        if T.self == Date.self {
+            return try decodePrimitive() as Date as! T
+        }
+        return try T.init(from: SQLValueDecoder(value: value, codingPath: codingPath))
     }
 }

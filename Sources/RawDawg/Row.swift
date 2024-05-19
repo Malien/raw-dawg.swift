@@ -57,6 +57,10 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
     }
 
     public func decode<T: SQLPrimitiveDecodable>(valueAt index: Int) throws -> T {
+        return try self.decode(valueAt: index, as: T.self)
+    }
+
+    public func decode<T: SQLPrimitiveDecodable>(valueAt index: Int, as: T.Type) throws -> T {
         guard let result = T.init(fromSQL: self[valueAt: index]) else {
             throw DecodingError.typeMismatch(
                 T.self,
@@ -77,6 +81,10 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
     }
 
     public func decode<T: SQLPrimitiveDecodable>(valueAt column: String) throws -> T {
+        return try self.decode(valueAt: column, as: T.self)
+    }
+
+    public func decode<T: SQLPrimitiveDecodable>(valueAt column: String, as: T.Type) throws -> T {
         guard let value = self[column] else {
             throw DecodingError.keyNotFound(
                 ColumnName(column), .init(codingPath: [], debugDescription: ""))

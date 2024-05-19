@@ -75,31 +75,32 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     case emptyQuery(query: BoundQuery)
     case bindingMissmatch(query: BoundQuery, expected: Int32, got: Int)
     case noRowsFetched
-    
+    case notSingleValue(columnCount: Int)
+
     internal enum Context {
         case unknown
         case openDatabase(filename: String, mode: OpenMode)
         case prepareStatement(query: BoundQuery)
     }
-    internal init (sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {
+    internal init(sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {
         switch context {
         case .unknown:
             self = .unknown(code: code, message: message)
-        case .openDatabase(filename: let filename, mode: let mode):
+        case .openDatabase(let filename, let mode):
             self = .openDatabase(code: code, message: message, filename: filename, mode: mode)
-        case .prepareStatement(query: let query):
+        case .prepareStatement(let query):
             self = .prepareStatement(code: code, message: message, query: query)
         }
     }
 
     public var description: String {
         switch self {
-        case .unknown(code: let code, message: let message): "SQLite Error \(code): \(message)"
-        case .openDatabase(code: let code, message: let message, filename: let filename, mode: let mode):
+        case .unknown(let code, let message): "SQLite Error \(code): \(message)"
+        case .openDatabase(let code, let message, let filename, let mode):
             "SQLite Error \(code): \(message) when trying to open a database (filename=\(filename), mode=\(mode))"
-        case .prepareStatement(code: let code, message: let message, query: let query):
+        case .prepareStatement(let code, let message, let query):
             "SQLite Error \(code): \(message) in \(query.query) \(query.bindings)"
-        case .emptyQuery(query: let query):
+        case .emptyQuery(let query):
             "Cannot prepare an empty query. \(query.query) \(query.bindings)"
         case let .bindingMissmatch(query: query, expected: expected, got: got) where got < expected:
             "Insufficient number of bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided. In query \(query.query) \(query.bindings)"
@@ -107,26 +108,30 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
             "Too many bindings provided. Query has \(expected) placeholder(s), but \(got) binding(s) provided. In query \(query.query) \(query.bindings)"
         case .noRowsFetched:
             "When calling .fetchOne() no rows were returned"
+        case .notSingleValue(columnCount: 0):
+            "Cannot to decode SQLPrimitiveDecodable from a statment that returns zero columns"
+        case .notSingleValue(let columnCount):
+            "Cannot to decode SQLPrimitiveDecodable from a statment that returns more than one column. (Expected 1, got \(columnCount))"
         }
     }
-    
+
     public var sqliteErrorCode: Int32? {
         switch self {
-        case .unknown(code: let code, message: _): code
-        case .openDatabase(code: let code, message: _, filename: _, mode: _): code
-        case .prepareStatement(code: let code, message: _, query: _): code
+        case .unknown(let code, message: _): code
+        case .openDatabase(let code, message: _, filename: _, mode: _): code
+        case .prepareStatement(let code, message: _, query: _): code
         default: nil
         }
     }
     public var sqliteMessage: String? {
         switch self {
-        case .unknown(code: _, message: let message): message
-        case .openDatabase(code: _, message: let message, filename: _, mode: _): message
-        case .prepareStatement(code: _, message: let message, query: _): message
+        case .unknown(code: _, let message): message
+        case .openDatabase(code: _, let message, filename: _, mode: _): message
+        case .prepareStatement(code: _, let message, query: _): message
         default: nil
         }
     }
-    
+
     public var code: Int32 { sqliteErrorCode ?? SQLITE_ERROR }
     public var message: String { sqliteMessage ?? description }
 }
@@ -149,7 +154,8 @@ public struct InsertionStats: Equatable, Hashable, Sendable {
 }
 
 public enum OpenMode: Sendable, Equatable, Hashable {
-    case readOnly, readWrite(create: Bool)
+    case readOnly
+    case readWrite(create: Bool)
     public static var readWrite = Self.readWrite(create: true)
 }
 
@@ -241,7 +247,8 @@ public actor Database {
         }
         let bindingCount = sqlite3_bind_parameter_count(stmt)
         guard bindingCount == query.bindings.count else {
-            throw SQLiteError.bindingMissmatch(query: query, expected: bindingCount, got: query.bindings.count)
+            throw SQLiteError.bindingMissmatch(
+                query: query, expected: bindingCount, got: query.bindings.count)
         }
         for (position, binding) in zip(Int32(1)..., query.bindings) {
             try throwing {
@@ -310,7 +317,8 @@ public actor Database {
         return SQLiteError(sqliteErrorCode: code, message: message, context: context)
     }
 
-    func error(unlessOK resultCode: Int32, context: SQLiteError.Context = .unknown) -> SQLiteError? {
+    func error(unlessOK resultCode: Int32, context: SQLiteError.Context = .unknown) -> SQLiteError?
+    {
         if resultCode != SQLITE_OK {
             return self.lastError(withCode: resultCode, context: context)
         } else {
