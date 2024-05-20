@@ -65,6 +65,22 @@ public struct PreparedStatement: ~Copyable, Sendable {
         }
     }
 
+    // Two extra generic arguments is there to prevent this overload from firing on 0 and 1 columns
+    // - Decoding 0 columns should not be possible, as there cannot be crafted a query that yields no columns
+    // - Decoding 1 column conflicts with the <T: Decodable> overload for any type that is both
+    //   Decodable and SQLPrimitiveDecodable (which is most of them, ie. Int, Date, String, Optional, etc)
+    public mutating func step<Column1, Column2, each Column>() async throws -> (
+        Column1, Column2, repeat each Column
+    )?
+    where
+        Column1: SQLPrimitiveDecodable, Column2: SQLPrimitiveDecodable,
+        repeat each Column: SQLPrimitiveDecodable
+    {
+        try guardColumnCount(expected: 2 + packLength(repeat (each Column).self))
+        let row: Row? = try await self.step()
+        return try row.map { try $0.decode() }
+    }
+
     public mutating func step<T: Decodable>() async throws -> T? {
         try await step().map { try $0.decode() }
     }
@@ -96,9 +112,25 @@ public struct PreparedStatement: ~Copyable, Sendable {
         }
     }
 
+    // Two extra generic arguments is there to prevent this overload from firing on 0 and 1 columns
+    // - Decoding 0 columns should not be possible, as there cannot be crafted a query that yields no columns
+    // - Decoding 1 column conflicts with the <T: Decodable> overload for any type that is both
+    //   Decodable and SQLPrimitiveDecodable (which is most of them, ie. Int, Date, String, Optional, etc)
+    public consuming func fetchAll<Column1, Column2, each Column>() async throws -> [(
+        Column1, Column2, repeat each Column
+    )]
+    where
+        Column1: SQLPrimitiveDecodable, Column2: SQLPrimitiveDecodable,
+        repeat each Column: SQLPrimitiveDecodable
+    {
+        try guardColumnCount(expected: 2 + packLength(repeat (each Column).self))
+        let row: [Row] = try await self.fetchAll()
+        return try row.map { try $0.decode() }
+    }
+
     public consuming func fetchAll<T: Decodable>() async throws -> [T] {
         if let type = T.self as? SQLPrimitiveDecodable.Type {
-            try guardSingleColumn()
+            try guardColumnCount(expected: 1)
             return try await fetchAll().map { try $0.decode(valueAt: 0, as: type) as! T }
         }
         return try await fetchAll().map { try $0.decode() }
@@ -113,9 +145,22 @@ public struct PreparedStatement: ~Copyable, Sendable {
         }
     }
 
+    // Curiously there is no second "padding" generic argument for this one as it doesn't seem
+    // to conflict with <T: Decodable> overload. Hella curious. Basically any applied wrapper
+    // (aka. Optiona<(repeat each Column)> or [(repeat each Column)]) breaks resolution.
+    // Still there is one to prevent forming let _: () = statement.fetchOne() from happenning
+    public consuming func fetchOne<Column1, each Column>() async throws -> (
+        Column1, repeat each Column
+    )
+    where Column1: SQLPrimitiveDecodable, repeat each Column: SQLPrimitiveDecodable {
+        try guardColumnCount(expected: 1 + packLength(repeat (each Column).self))
+        let row: Row = try await self.fetchOne()
+        return try row.decode()
+    }
+
     public consuming func fetchOne<T: Decodable>() async throws -> T {
         if let type = T.self as? SQLPrimitiveDecodable.Type {
-            try guardSingleColumn()
+            try guardColumnCount(expected: 1)
             return try await fetchOne().decode(valueAt: 0, as: type) as! T
         }
         return try await fetchOne().decode()
@@ -127,17 +172,33 @@ public struct PreparedStatement: ~Copyable, Sendable {
         }
     }
 
+    // Two extra generic arguments is there to prevent this overload from firing on 0 and 1 columns
+    // - Decoding 0 columns should not be possible, as there cannot be crafted a query that yields no columns
+    // - Decoding 1 column conflicts with the <T: Decodable> overload for any type that is both
+    //   Decodable and SQLPrimitiveDecodable (which is most of them, ie. Int, Date, String, Optional, etc)
+    public consuming func fetchOptional<Column1, Column2, each Column>() async throws -> (
+        Column1, Column2, repeat each Column
+    )?
+    where
+        Column1: SQLPrimitiveDecodable, Column2: SQLPrimitiveDecodable,
+        repeat each Column: SQLPrimitiveDecodable
+    {
+        try guardColumnCount(expected: 2 + packLength(repeat (each Column).self))
+        let row: Row? = try await self.fetchOptional()
+        return try row.map { try $0.decode() }
+    }
+
     public consuming func fetchOptional<T: Decodable>() async throws -> T? {
         if let type = T.self as? SQLPrimitiveDecodable.Type {
-            try guardSingleColumn()
+            try guardColumnCount(expected: 1)
             return try await fetchOptional().map { try $0.decode(valueAt: 0, as: type) as! T }
         }
         return try await fetchOptional().map { try $0.decode() }
     }
 
-    private func guardSingleColumn() throws {
-        guard columnNames.count == 1 else {
-            throw SQLiteError.notSingleValue(columnCount: columnNames.count)
+    private func guardColumnCount(expected: Int) throws {
+        guard columnNames.count == expected else {
+            throw SQLiteError.columnCountMissmatch(expected: expected, got: columnNames.count)
         }
     }
 
@@ -169,4 +230,16 @@ public struct PreparedStatement: ~Copyable, Sendable {
             }
         }
     }
+}
+
+// This is hacky af. But from what I've seen at compiler explorer, simple constant folding optimizes this pattern easily.
+// This might get a lot simpler in swift 6, yet in the meantime, damn do I feel clever af.
+private func packLength<each T>(_ witness: repeat each T) -> Int {
+    var length = 0
+    _ = (repeat increment(each witness, &length))
+    return length
+}
+
+private func increment<T>(_ dummy: T, _ value: inout Int) {
+    value += 1
 }

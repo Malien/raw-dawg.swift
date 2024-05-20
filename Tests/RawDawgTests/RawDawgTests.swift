@@ -375,4 +375,72 @@ final class SQLiteM_swiftTests: XCTestCase {
 
         XCTAssertEqual(date, formatter.date(from: "2024-02-03T08:12:23.032Z"))
     }
+
+    func testFetchOneParameterPackDecode() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let (i64, f64, string, blob, _): (Int, Double, String, SQLiteBlob, SQLNull) =
+            try await db.prepare("SELECT 1, 2.0, 'text', unhex('42069f'), null").fetchOne()
+        XCTAssertEqual(i64, 1)
+        XCTAssertEqual(f64, 2.0)
+        XCTAssertEqual(string, "text")
+        XCTAssertEqual(blob, SQLiteBlob.loaded(Data([0x42, 0x06, 0x9f])))
+    }
+
+    func testFetchAllParameterPackDecode() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let rows: [(Int, String?)] = try await db.prepare(
+            """
+            with cte(number, string) as (values (1, 'hello'), (2, null))
+            select number, string from cte
+            """
+        ).fetchAll()
+        XCTAssertEqual(rows[0].0, 1)
+        XCTAssertEqual(rows[0].1, "hello")
+        XCTAssertEqual(rows[1].0, 2)
+        XCTAssertEqual(rows[1].1, nil)
+    }
+
+    func testFetchOptionalParameterPackDecode() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let value: (Int, String?)? = try await db.prepare(
+            """
+            with cte(number, string) as (values (1, 'hello'))
+            select number, string from cte
+            """
+        ).fetchOptional()
+        XCTAssertNotNil(value)
+        XCTAssertEqual(value?.0, 1)
+        XCTAssertEqual(value?.1, "hello")
+    }
+
+    func testStepParameterPackDecode() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var statement = try await db.prepare(
+            """
+            with cte(number, string) as (values (1, 'hello'))
+            select number, string from cte
+            """)
+        let value: (Int, String?)? = try await statement.step()
+        try await statement.finalize()
+        XCTAssertNotNil(value)
+        XCTAssertEqual(value?.0, 1)
+        XCTAssertEqual(value?.1, "hello")
+    }
+
+    func compileTestFetchOneIsNotAmbigious() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let _: Int = try await db.prepare("select 1").fetchOne()
+    }
+
+    func compileTestFetchOptionalIsNotAmbigious() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let _: Int? = try await db.prepare("select 1").fetchOptional()
+    }
+
+    func compileTestStepIsNotAmbigious() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        var statement = try await db.prepare("select 1")
+        let _: Int? = try await statement.step()
+        try await statement.finalize()
+    }
 }

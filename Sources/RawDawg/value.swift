@@ -225,19 +225,19 @@ extension Date: SQLPrimitiveDecodable {
         case .float(let unixEpoch):
             self.init(timeIntervalSince1970: unixEpoch)
         case .text(var iso8601String):
-//            let parsed = if #available(macOS 13.0, *) {
-//                parseDate(usingSwiftRegex: iso8601String)
-//            } else {
-//                parseDate(usingNSRegex: iso8601String)
-//            }
-//            let parsed = parseDate(usingNSRegex: iso8601String)
-//            
-//            if let date = parsed {
-//                self = date
-//            } else {
-//                return nil
-//            }
-            
+            //            let parsed = if #available(macOS 13.0, *) {
+            //                parseDate(usingSwiftRegex: iso8601String)
+            //            } else {
+            //                parseDate(usingNSRegex: iso8601String)
+            //            }
+            //            let parsed = parseDate(usingNSRegex: iso8601String)
+            //
+            //            if let date = parsed {
+            //                self = date
+            //            } else {
+            //                return nil
+            //            }
+
             // TODO: Implement a more efficient iso8601 string parsing
             if let space = iso8601String.firstIndex(of: " ") {
                 iso8601String.replaceSubrange(space...space, with: "T")
@@ -246,7 +246,8 @@ extension Date: SQLPrimitiveDecodable {
                 iso8601String += "Z"
             }
             if #available(macOS 12.0, *) {
-                try? self.init(iso8601String, strategy: ISO8601FormatStyle(includingFractionalSeconds: true))
+                try? self.init(
+                    iso8601String, strategy: ISO8601FormatStyle(includingFractionalSeconds: true))
             } else {
                 let formatter = ISO8601DateFormatter()
                 formatter.formatOptions.insert(.withFractionalSeconds)
@@ -336,13 +337,13 @@ private func parseDate(usingNSRegex string: String) -> Date? {
 
 private enum TimeZoneOffset {
     case utc
-    case offset(sign: Int,hours: Int, minutes: Int)
-    
+    case offset(sign: Int, hours: Int, minutes: Int)
+
     var timeZone: TimeZone? {
         switch self {
-        case .utc: 
-            return TimeZone(identifier: "UTC") // In swift TimeZone.utc == TimeZone(identifier: "UTC")
-        case .offset(sign: let sign, hours: let hours, minutes: let minutes):
+        case .utc:
+            return TimeZone(identifier: "UTC")  // In swift TimeZone.utc == TimeZone(identifier: "UTC")
+        case .offset(let sign, let hours, let minutes):
             return TimeZone(secondsFromGMT: sign * (hours * 60 * 60 + minutes * 60))
         }
     }
@@ -371,7 +372,6 @@ private enum TimeZoneOffset {
     }
 }
 
-
 //#if canImport(RegexBuilder)
 //    import RegexBuilder
 //#endif
@@ -394,7 +394,7 @@ private enum TimeZoneOffset {
 //            Int($0)!
 //        }
 //    }
-//    
+//
 //    static func digits(_ count: Int, as ref: Reference<Int?>) -> some RegexComponent {
 //        Capture(as: ref) {
 //            Repeat(.digit, count: count)
@@ -452,16 +452,16 @@ private enum TimeZoneOffset {
 //        }
 //        Anchor.endOfSubject
 //    }
-//    
+//
 //    static func parseDate(iso8601ish string: String) -> Date? {
 //        guard let match = string.wholeMatch(of: iso8601Regex) else {
 //            return nil
 //        }
-//        
+//
 //        let offset = match[offsetRef] ?? TimeZoneOffset.utc
 //        let calendar = Calendar(identifier: .iso8601)
 //        let components = DateComponents(
-//            calendar: calendar, 
+//            calendar: calendar,
 //            timeZone: offset.timeZone,
 //            year: match[yearRef],
 //            month: match[monthRef],

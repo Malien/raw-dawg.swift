@@ -56,18 +56,20 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
         _values[_values.startIndex + index]
     }
 
-    public func decode<T: SQLPrimitiveDecodable>(valueAt index: Int) throws -> T {
-        return try self.decode(valueAt: index, as: T.self)
+    public func decode<Column: SQLPrimitiveDecodable>(valueAt index: Int) throws -> Column {
+        return try self.decode(valueAt: index, as: Column.self)
     }
 
-    public func decode<T: SQLPrimitiveDecodable>(valueAt index: Int, as: T.Type) throws -> T {
-        guard let result = T.init(fromSQL: self[valueAt: index]) else {
+    public func decode<Column: SQLPrimitiveDecodable>(valueAt index: Int, as: Column.Type) throws
+        -> Column
+    {
+        guard let result = Column.init(fromSQL: self[valueAt: index]) else {
             throw DecodingError.typeMismatch(
-                T.self,
+                Column.self,
                 .init(
                     codingPath: [],
                     debugDescription:
-                        "Tried to decode \(T.self) from SQLite value \(self[valueAt: index])"))
+                        "Tried to decode \(Column.self) from SQLite value \(self[valueAt: index])"))
         }
         return result
     }
@@ -80,26 +82,42 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
         init(_ value: String) { self.stringValue = value }
     }
 
-    public func decode<T: SQLPrimitiveDecodable>(valueAt column: String) throws -> T {
-        return try self.decode(valueAt: column, as: T.self)
+    public func decode<Column: SQLPrimitiveDecodable>(valueAt column: String) throws -> Column {
+        return try self.decode(valueAt: column, as: Column.self)
     }
 
-    public func decode<T: SQLPrimitiveDecodable>(valueAt column: String, as: T.Type) throws -> T {
+    public func decode<Column: SQLPrimitiveDecodable>(valueAt column: String, as: Column.Type)
+        throws -> Column
+    {
         guard let value = self[column] else {
             throw DecodingError.keyNotFound(
                 ColumnName(column), .init(codingPath: [], debugDescription: ""))
         }
-        guard let decoded = T.init(fromSQL: value) else {
+        guard let decoded = Column.init(fromSQL: value) else {
             throw DecodingError.typeMismatch(
-                T.self,
+                Column.self,
                 .init(
                     codingPath: [],
-                    debugDescription: "Tried to decode \(T.self) from SQLite value \(value)"))
+                    debugDescription: "Tried to decode \(Column.self) from SQLite value \(value)"))
         }
         return decoded
     }
 
+    // I think I might've cooked here. I feel so smart 🤓.
+    public func decode<each Column: SQLPrimitiveDecodable>() throws -> (repeat each Column) {
+        var counter = 0
+        return (repeat try decodePackElement(as: (each Column).self, counter: &counter))
+    }
+
     public func decode<T: Decodable>() throws -> T {
         try T(from: SQLDecoder(row: self))
+    }
+
+    private func decodePackElement<T: SQLPrimitiveDecodable>(as witness: T.Type, counter: inout Int)
+        throws -> T
+    {
+        let res = try self.decode(valueAt: counter, as: witness)
+        counter += 1
+        return res
     }
 }

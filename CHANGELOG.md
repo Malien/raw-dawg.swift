@@ -7,6 +7,9 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+### Added
+- Ability to decode tuples via swift's generic parameter packs. No need to create small structs just to hold query result 🎉
+
 ## [0.0.7] - 2024-05-19
 
 ### Fixed
