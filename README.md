@@ -97,6 +97,29 @@ struct Post: Codable {
 let posts: [Post] = try await db.prepare("select title, contents, created_at, 0 as starred, cover, category from posts").fetchAll()
 ```
 This also means you get `RawRepresentable` enum serialization for free. Bot `Int` and `String` ones.
+
+#### ✅ Quick and easy tuple deserialization
+Want to quickly extract a couple of values from the database in ad-hoc manner? No worries, there is no longer a need to create a struct just to hold the type-safe result of a query
+```swift
+let usersSignedUp: Int = db.prepare("select count(*) from users").fetchOne()
+
+let (id, createdAt): (Int, Date) = db.prepare(
+    "insert into users (fist_name, last_name) values ('John', 'Appleseed') returning id, created_at"
+).fetchOne()
+
+let username: (String, String)? = db.prepare(
+    "select first_name, last_name from users where id = \(userID)"
+).fetchOptional()
+
+let produceSoldToday: [(Int, String, Int)] = db.prepare("""
+    select sales.product_id, products.name, sum(sales.amount * sales.price)
+    from sales
+    join products on sales.product_id = products.id
+    group by sales.product_id, products.name
+    having sales.created_at > datetime('now', 'start of day')
+    """).fetchAll()
+```
+
 #### ✅ No SQL injections.
 `"where name = \(username)"` is built on top of Swift's `ExpressibleByStringInterpolation` and safely escapes (binds) arguments instead of interpolating a string.
 ```swift
