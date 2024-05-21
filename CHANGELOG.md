@@ -7,6 +7,8 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+## [0.0.8] - 2024-05-21
+
 ### Added
 - Ability to decode tuples via swift's generic parameter packs. No need to create small structs just to hold query result 🎉
 
@@ -83,8 +85,9 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 ### Changed
 - Added `Sendable` constraints to all type-safe types (`PreparedStatement`, `BoundQuery`, `Row`, `SQLNull`, `SQLiteBlob`, `SQLiteValue`, `OpenMode`, `InsertionStats`, error types)
 
-[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.7...HEAD
-[0.0.6]: https://github.com/malien/raw-dawg.swift/compare/0.0.6...0.0.7
+[unreleased]: https://github.com/malien/raw-dawg.swift/compare/0.0.8...HEAD
+[0.0.8]: https://github.com/malien/raw-dawg.swift/compare/0.0.7...0.0.8
+[0.0.7]: https://github.com/malien/raw-dawg.swift/compare/0.0.6...0.0.7
 [0.0.6]: https://github.com/malien/raw-dawg.swift/compare/0.0.5...0.0.6
 [0.0.5]: https://github.com/malien/raw-dawg.swift/compare/0.0.4...0.0.5
 [0.0.4]: https://github.com/malien/raw-dawg.swift/compare/0.0.3...0.0.4

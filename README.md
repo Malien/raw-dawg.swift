@@ -12,16 +12,20 @@ Cause there's nothing wrong with writing raw SQL
 - [ ] `@AsyncRowDecodable` macro to conform automagically
 - [ ] Additional dynamic query building capabilities(?)
 - [ ] Pooling
+- [ ] Syncronous API
 - [X] Date-time support
 - [ ] URL support
-- [ ] SharedStatement
+- [ ] ~~SharedStatement~~
 - [ ] Stabilize API / Usability testing
+- [ ] Conform to semantic versioning
 - [ ] SPM 1.0.0 tag
+
+**Note: The package does not conform to semantic versioning for now. Patch releases are breaking**
 
 ## Usage
 Add dependancy to the `Package.swift`
 ```swift
-.package(url: "https://github.com/malien/raw-dawg.swift.git", exact: "0.0.7")
+.package(url: "https://github.com/malien/raw-dawg.swift.git", exact: "0.0.8")
 ```
 And don't forget to add 
 ```swift
