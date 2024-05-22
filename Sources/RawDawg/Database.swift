@@ -179,7 +179,7 @@ public actor Database {
         #if !canImport(SQLite3)
             let initResult = sqlite3_initialize()
             if initResult != SQLITE_OK {
-                throw SQLiteError(code: initResult, message: "Failed to initialize SQLite")
+                throw SQLiteError.openDatabase(code: initResult, message: "Failed to initialize SQLite", filename: filename, mode: mode)
             }
         #endif
         var db: OpaquePointer? = nil
