@@ -266,17 +266,12 @@ extension Date: SQLPrimitiveDecodable {
             if !isUTC(iso8601: iso8601String) {
                 iso8601String += "Z"
             }
-            if #available(macOS 12.0, *) {
-                try? self.init(
-                    iso8601String, strategy: ISO8601FormatStyle(includingFractionalSeconds: true))
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions.insert(.withFractionalSeconds)
+            if let date = formatter.date(from: iso8601String) {
+                self = date
             } else {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions.insert(.withFractionalSeconds)
-                if let date = formatter.date(from: iso8601String) {
-                    self = date
-                } else {
-                    return nil
-                }
+                return nil
             }
         }
     }
