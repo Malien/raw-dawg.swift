@@ -10,6 +10,9 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 ### Added
 - `https://github.com/apple/swift-docc-plugin` as a dependancy
 
+### Changed
+- Renamed `query` of `BoundQuery` to `queryString`
+
 ### Removed
 - `RowidSelector` enum and the corresponding `rowid:` parameter of `Database/prepare(_:)`
 - `persistant:` parameter of `Database/prepare(_:)`
@@ -24,7 +27,7 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 ### Fixed
 - Date time parsing is now SQLite friendly
 
-### Cahnged
+### Changed
 - Better deserialization of primitives from rows
 
 ## [0.0.6] - 2024-05-18
