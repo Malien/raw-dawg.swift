@@ -443,4 +443,16 @@ final class SQLiteM_swiftTests: XCTestCase {
         let _: Int? = try await statement.step()
         try await statement.finalize()
     }
+    
+    func testBoolsAreDecodedAsTheyShould() async throws {
+        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let oneTrue: Bool = try await db.prepare("select 1").fetchOne()
+        XCTAssertTrue(oneTrue)
+        let oneFalse: Bool = try await db.prepare("select 0").fetchOne()
+        XCTAssertFalse(oneFalse)
+        let inTuple: (Bool, Bool, Bool) = try await db.prepare("select 0, 1, 69").fetchOne()
+        XCTAssertFalse(inTuple.0)
+        XCTAssertTrue(inTuple.1)
+        XCTAssertTrue(inTuple.2)
+    }
 }

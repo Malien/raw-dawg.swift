@@ -158,9 +158,9 @@ extension Bool: SQLPrimitiveDecodable {
     public init?(fromSQL primitive: SQLiteValue) {
         switch primitive {
         case .integer(0):
-            self = true
-        case .integer(_):
             self = false
+        case .integer(_):
+            self = true
         default:
             return nil
         }
@@ -534,6 +534,12 @@ private func isUTC(iso8601 string: String) -> Bool {
 /// ```
 public protocol SQLPrimitiveEncodable {
     consuming func encode() -> SQLiteValue
+}
+
+extension Bool: SQLPrimitiveEncodable {
+    public func encode() -> SQLiteValue {
+        .integer(self ? 1 : 0)
+    }
 }
 
 extension String: SQLPrimitiveEncodable {

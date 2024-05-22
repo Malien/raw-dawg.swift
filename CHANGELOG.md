@@ -7,6 +7,14 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+## [0.1.1] - 2024-05-22
+
+### Added
+- Bool conformance to `SQLPrimitiveEncodable`
+
+### Fixed
+- Boolean decoding was the wrong way around
+
 ## [0.1.0] - 2024-05-22
 
 ### Added
