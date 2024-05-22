@@ -10,24 +10,20 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-mac:
-    name: Build and test swift package on Mac
-    runs-on: macos-latest
-
+  build: 
+    name: Build and test package on ${{ matrix.os }} with swift v${{ matrix.swift }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        swift: ["5.10"]
+    runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: ${{ matrix.swift }}
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build -v
+      - name: Run tests
+        run: swift test -v
 
-  build-linux:
-    name: Build and test swift package on Linux
-    runs-on: ubuntu-latest
-    container: swift:5.10-jammy
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
