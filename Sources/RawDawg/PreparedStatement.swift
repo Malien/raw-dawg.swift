@@ -326,8 +326,8 @@ public struct PreparedStatement: ~Copyable, Sendable {
     
     /// Return the first ``Row`` or `nil` if the statement yields 0 rows
     ///
-    /// There are alternative overloads that [decode rows into typed tuples](doc:RawDawg/PreparedStatement/fetchOne()-92nz3)
-    /// or [use the `Decodable` protocol](doc:RawDawg/PreparedStatement/fetchOne()-1sp53), rather than dealing in raw ``Row`` objects
+    /// There are alternative overloads that [decode rows into typed tuples](doc:RawDawg/PreparedStatement/fetchOptional()-92nz3)
+    /// or [use the `Decodable` protocol](doc:RawDawg/PreparedStatement/fetchOptional()-1sp53), rather than dealing in raw ``Row`` objects
     ///
     /// This action will consume and finalize the statement, yielding any errors that rise from doing so back to the caller
     public consuming func fetchOptional() async throws -> Row? {
