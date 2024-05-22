@@ -1,9 +1,18 @@
 import Foundation
 
+/// A Swift representation of SQLite's `BLOB` storage type
+///
+/// Can be one of three things:
+/// - In-memory buffer of bytes, represented by Foundation's `Data` type
+/// - A `NULL` (or empty) value
+/// - A handle to the BLOB object, allowing for incremental reads and writes (streaming)
 public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable, Sendable
 {
+    /// Empty or `NULL` state
     case empty
+    /// In-memory buffer of bytes
     case loaded(Data)
+    /// A handle to the BLOB object. **Not implemented**
     case stream(Never)
 
     init(bytes: UnsafeRawPointer, count: Int) {
@@ -49,6 +58,7 @@ public enum SQLiteBlob: Equatable, SQLPrimitiveDecodable, Decodable, SQLPrimitiv
     }
 }
 
+/// Owned SQLite value of all possible storage types
 public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable,
     CustomStringConvertible, Sendable
 {
@@ -77,6 +87,7 @@ public enum SQLiteValue: Equatable, SQLPrimitiveDecodable, SQLPrimitiveEncodable
     }
 }
 
+/// An empty struct representing a `NULL` SQL value. Limited usefulness.
 public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQLPrimitiveEncodable,
     Sendable
 {
@@ -104,7 +115,30 @@ public struct SQLNull: Equatable, Hashable, SQLPrimitiveDecodable, Decodable, SQ
     }
 }
 
+// MARK: SQLPrimitiveDecodable
+
+/// A way of decoding dynamic ``SQLiteValue`` into more specific type.
+///
+/// Can be used to specialize the behaviour of ``Row/decode(valueAt:)-8i6gt``,
+/// ``PreparedStatement/fetchAll()-6jov4``, ``PreparedStatement/fetchOne()-8yva9``,
+/// ``PreparedStatement/fetchOptional()-92nz3``, ``PreparedStatement/step()-92san``
+///
+/// ```swift
+/// struct UserID: SQLValueDecodable {
+///     var rawValue: Int
+///
+///     init?(fromSQL primitive: SQLiteValue) {
+///         guard case .integer(let int) = primitive else {
+///             return nil
+///         }
+///         self.init(rawValue: int)
+///     }
+/// }
+///
+/// let users: [(UserID, String)] = db.prepare("select id, name from users").fetchAll()
+/// ```
 public protocol SQLPrimitiveDecodable {
+    /// Try to intialize Self given ``SQLiteValue``, or return `nil` if conversion isn't possible
     init?(fromSQL primitive: SQLiteValue)
 }
 
@@ -484,6 +518,25 @@ private func isUTC(iso8601 string: String) -> Bool {
     return offsetDigits == 2 || offsetDigits == 4
 }
 
+// MARK: SQLPrimitiveEncodable
+
+/// A way of encoding a swift value into ``SQLiteValue``
+///
+/// Used to customize behaviour of ``BoundQuery``
+///
+/// ```swift
+/// struct UserID: SQLPrimitiveEncodable {
+///     var rawValue: Int
+///
+///     func encode() -> SQLiteValue {
+///         .integer(rawValue)
+///     }
+/// }
+///
+/// func fetchUser(byID id: UserID) async throws -> User? {
+///     try await db.prepare("select * from users where id = \(id)").fetchOptional()
+/// }
+/// ```
 public protocol SQLPrimitiveEncodable {
     consuming func encode() -> SQLiteValue
 }

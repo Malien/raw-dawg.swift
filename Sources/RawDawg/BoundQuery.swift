@@ -28,18 +28,18 @@
 ///   let query: BoundQuery = "select * from users where id = \(1) \(raw: "and name = 'Alice'")"
 ///   ```
 public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation, Sendable {
-    var query: String
+    var queryString: String
     var bindings: [SQLiteValue]
 
     public typealias StringLiteralType = StaticString
 
     init(raw query: String, bindings: [SQLiteValue]) {
-        self.query = query
+        self.queryString = query
         self.bindings = bindings
     }
 
     public init(stringLiteral value: Self.StringLiteralType) {
-        query = value.description
+        queryString = value.description
         bindings = []
     }
 
@@ -67,7 +67,7 @@ public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpo
 
         public mutating func appendInterpolation(fragment: BoundQuery?) {
             guard let fragment = fragment else { return }
-            query += fragment.query
+            query += fragment.queryString
             bindings += fragment.bindings
         }
 
@@ -77,7 +77,7 @@ public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpo
     }
 
     public init(stringInterpolation: Self.StringInterpolation) {
-        query = stringInterpolation.query
+        queryString = stringInterpolation.query
         bindings = stringInterpolation.bindings
     }
 }

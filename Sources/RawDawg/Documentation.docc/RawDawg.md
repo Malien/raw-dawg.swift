@@ -69,14 +69,17 @@ struct Post: Codable {
   }
 }
 
-let posts: [Post] = try await db.prepare("select title, contents, created_at, 0 as starred, cover, category from posts").fetchAll()
+let posts: [Post] = try await db.prepare("""
+    select title, contents, created_at, 0 as starred, cover, category
+    from posts
+    """).fetchAll()
 ```
 This also means you get `RawRepresentable` enum serialization for free. Bot `Int` and `String` ones.
 
 #### ✅ Quick and easy tuple deserialization
 Want to quickly extract a couple of values from the database in ad-hoc manner? No worries, there is no longer a need to create a struct just to hold the type-safe result of a query
 ```swift
-let usersSignedUp: Int = db.prepare("select count(*) from users").fetchOne()
+let userCount: Int = db.prepare("select count(*) from users").fetchOne()
 
 let (id, createdAt): (Int, Date) = db.prepare("""
     insert into users (fist_name, last_name)

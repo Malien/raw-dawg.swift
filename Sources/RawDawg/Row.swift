@@ -1,3 +1,21 @@
+/// Decoded, owned row, with column values
+///
+/// ## Topics
+/// ### Decode into Swift value
+/// - ``decode()-5gu78``
+/// - ``decode()-73lf8``
+/// ### Get value given the column name
+/// - ``subscript(_:)-8ic3s``
+/// - ``decode(valueAt:)-8i6gt``
+/// - ``decode(valueAt:as:)-5zo4x``
+/// ### Get value at index
+/// - ``subscript(valueAt:)``
+/// - ``decode(valueAt:)-797yx``
+/// - ``decode(valueAt:as:)-5maig``
+/// ### Key-value pairs
+/// - ``subscript(_:)-maj6``
+/// - ``Iterator``
+/// - ``makeIterator()``
 public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollection {
     private let _columns: [String]
     private let _values: [SQLiteValue].SubSequence
@@ -13,6 +31,7 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
 
     public typealias Element = (columnName: String, value: SQLiteValue)
 
+    /// An interator of `(columnName:, value:)` pairs
     public struct Iterator: IteratorProtocol {
         public typealias Element = Row.Element
         var inner: Zip2Sequence<[String], [SQLiteValue].SubSequence>.Iterator
@@ -46,20 +65,34 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
     var columns: some RandomAccessCollection<String> { self._columns }
     var values: some RandomAccessCollection<SQLiteValue> { self._values }
 
+    /// Get the value in the column, by it's name
+    /// - Returns: `nil` if the column doesn't exist, ``SQLiteValue`` othervise (even if the value itself if ``SQLiteValue/null``)
     public subscript(column: String) -> SQLiteValue? {
         _columns.firstIndex(of: column).map { idx in
             _values[_values.startIndex + idx]
         }
     }
 
+    /// Get the value in the column, by it's index in the result set
+    ///
+    /// Will panic if the index is out of bounds
+    /// - Precondition: `index` is in bounds
     public subscript(valueAt index: Int) -> SQLiteValue {
         _values[_values.startIndex + index]
     }
 
+    /// Decode the ``SQLPrimitiveDecodable`` value in the colum, by it's index
+    ///
+    /// Will panic if the index is out of bounds
+    /// - Precondition: `index` is in bounds
     public func decode<Column: SQLPrimitiveDecodable>(valueAt index: Int) throws -> Column {
         return try self.decode(valueAt: index, as: Column.self)
     }
 
+    /// Decode the ``SQLPrimitiveDecodable`` value in the colum indexed by it's position in the result set
+    ///
+    /// Will panic if the index is out of bounds
+    /// - Precondition: `index` is in bounds
     public func decode<Column: SQLPrimitiveDecodable>(valueAt index: Int, as: Column.Type) throws
         -> Column
     {
@@ -82,10 +115,16 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
         init(_ value: String) { self.stringValue = value }
     }
 
+    /// Decode the ``SQLPrimitiveDecodable`` value in the column indexed by it's name
+    ///
+    /// - Throws: `DecodingError` if the column with specified name doesn't exist
     public func decode<Column: SQLPrimitiveDecodable>(valueAt column: String) throws -> Column {
         return try self.decode(valueAt: column, as: Column.self)
     }
 
+    /// Decode the ``SQLPrimitiveDecodable`` value in the column indexed by it's name
+    ///
+    /// - Throws: `DecodingError` if the column with specified name doesn't exist
     public func decode<Column: SQLPrimitiveDecodable>(valueAt column: String, as: Column.Type)
         throws -> Column
     {
@@ -103,12 +142,14 @@ public struct Row: Equatable, Sequence, Sendable, Collection, RandomAccessCollec
         return decoded
     }
 
+    /// Decode row into a tuple of ``SQLPrimitiveDecodable`` values
     // I think I might've cooked here. I feel so smart 🤓.
     public func decode<each Column: SQLPrimitiveDecodable>() throws -> (repeat each Column) {
         var counter = 0
         return (repeat try decodePackElement(as: (each Column).self, counter: &counter))
     }
 
+    /// Decode row into a `Decodable` value
     public func decode<T: Decodable>() throws -> T {
         try T(from: SQLDecoder(row: self))
     }

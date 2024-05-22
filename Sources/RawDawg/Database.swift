@@ -252,8 +252,8 @@ public actor Database {
         try throwing(context: .prepareStatement(query: query)) {
             sqlite3_prepare_v3(
                 db: self.db,
-                zSql: query.query,
-                nByte: Int32(query.query.utf8.count),
+                zSql: query.queryString,
+                nByte: Int32(query.queryString.utf8.count),
                 prepFlags: 0,
                 ppStmt: &stmt,
                 pzTail: nil
@@ -304,7 +304,7 @@ public actor Database {
         }
         log.trace(
             "Prepared SQL statement",
-            metadata: ["query": "\(query.query)", "bindings": "\(query.bindings)"])
+            metadata: ["query": "\(query.queryString)", "bindings": "\(query.bindings)"])
         return PreparedStatement(
             db: self,
             stmt: PreparedStatementPtr(ptr: stmt!),
