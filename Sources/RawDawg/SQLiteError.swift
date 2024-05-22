@@ -6,7 +6,7 @@
 
 public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     case unknown(code: Int32, message: String)
-    case openDatabase(code: Int32, message: String, filename: String, mode: OpenMode)
+    case openDatabase(code: Int32, message: String, filename: String, mode: Database.OpenMode)
     case prepareStatement(code: Int32, message: String, query: BoundQuery)
     case emptyQuery(query: BoundQuery)
     case bindingMissmatch(query: BoundQuery, expected: Int32, got: Int)
@@ -15,7 +15,7 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
 
     internal enum Context {
         case unknown
-        case openDatabase(filename: String, mode: OpenMode)
+        case openDatabase(filename: String, mode: Database.OpenMode)
         case prepareStatement(query: BoundQuery)
     }
     internal init(sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {

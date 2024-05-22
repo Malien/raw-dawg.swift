@@ -1,3 +1,32 @@
+/// The means by which RawDawg safely escapes and binds interpolated values to a query.
+///
+/// ```swift
+/// let query: BoundQuery = "select * from users where id = \(1)"
+/// ```
+///
+/// It supports three kinds of interpolated values:
+/// - any `SQLPrimitiveEncodable` type, which is inserted as a placeholder into the underlying
+///   query string, and is bound to the query at execution time.
+///   ```swift
+///   let name = "Alice"
+///   let age = 30
+///   let email: String? = nil
+///   let quotient: Double = 1.5
+///   let query: BoundQuery = """
+///       insert into users (name, age, email, quotient) 
+///       values (\(name), \(age), \(email), \(quotient))
+///       """
+///   ```
+/// - another `BoundQuery`, which is inserted as a fragment into the underlying query string.
+///   ```swift
+///   let whereClause: BoundQuery = "where id = \(1)"
+///   let query: BoundQuery = "select * from users \(fragment: whereClause)"
+///   ```
+/// - a raw string, which is inserted as-is into the underlying query string. This is 
+///   not safe and should be used with caution.
+///   ```swift
+///   let query: BoundQuery = "select * from users where id = \(1) \(raw: "and name = 'Alice'")"
+///   ```
 public struct BoundQuery: ExpressibleByStringLiteral, ExpressibleByStringInterpolation, Sendable {
     var query: String
     var bindings: [SQLiteValue]

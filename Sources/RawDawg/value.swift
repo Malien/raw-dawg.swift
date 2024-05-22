@@ -225,19 +225,6 @@ extension Date: SQLPrimitiveDecodable {
         case .float(let unixEpoch):
             self.init(timeIntervalSince1970: unixEpoch)
         case .text(var iso8601String):
-            //            let parsed = if #available(macOS 13.0, *) {
-            //                parseDate(usingSwiftRegex: iso8601String)
-            //            } else {
-            //                parseDate(usingNSRegex: iso8601String)
-            //            }
-            //            let parsed = parseDate(usingNSRegex: iso8601String)
-            //
-            //            if let date = parsed {
-            //                self = date
-            //            } else {
-            //                return nil
-            //            }
-
             // TODO: Implement a more efficient iso8601 string parsing
             if let space = iso8601String.firstIndex(of: " ") {
                 iso8601String.replaceSubrange(space...space, with: "T")

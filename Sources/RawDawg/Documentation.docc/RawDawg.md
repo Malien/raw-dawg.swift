@@ -1,37 +1,12 @@
-# raw-dawg.swift
+# ``RawDawg``
+
+Yet another SQLite3 Swift driver
+
+## Overview
+
 _raw dawg dat squeel_.
 
-Cause there's nothing wrong with writing raw SQL
-
-### Package isn't quite ready yet
-- [X] Parametrized updates/inserts via `db.prepare`
-- [X] SPM 0.0.1 tag
-- [ ] Transaction support
-- [ ] Blob streaming
-- [ ] Custom `AsyncRowDecodable` protocol based deserialization
-- [ ] `@AsyncRowDecodable` macro to conform automagically
-- [ ] Additional dynamic query building capabilities(?)
-- [ ] Pooling
-- [ ] Syncronous API
-- [X] Date-time support
-- [ ] URL support
-- [ ] ~~SharedStatement~~
-- [ ] Stabilize API / Usability testing
-- [ ] Conform to semantic versioning
-- [ ] SPM 1.0.0 tag
-
-**Note: The package does not conform to semantic versioning for now. Patch releases are breaking**
-
-## Usage
-Add dependancy to the `Package.swift`
-```swift
-.package(url: "https://github.com/malien/raw-dawg.swift.git", exact: "0.0.8")
-```
-And don't forget to add 
-```swift
-.product(name: "RawDawg", package: "raw-dawg.swift")
-```
-to the target dependancies as well
+Cause there's nothing wrong with writing raw SQL!
 
 ```swift
 let db = try Database(filename: "mydb.sqlite")
@@ -138,10 +113,10 @@ try await createUser(withName: "mark'); drop table users;") // Phew 😮‍💨.
 #### ✅ Database is an actor. 
 SQLite access is single threaded anyway. Actors provide convenient data access serialization with familiar async-await syntax.
 #### ✅ Convenient APIs for whatever life throws your way
-- [X] "Always-at-least-one" fetching via `statement.fetchOne()`
-- [X] Optionalities built-in via `statement.fetchOptional()`
-- [X] Fetch everything via `statement.fetchAll()`
-- [X] Incremental fetching via `statement.step()`
+- [X] "Always-at-least-one" fetching via ``PreparedStatement/fetchOne()-4grfr``
+- [X] Optionalities built-in via ``PreparedStatement/fetchOptional()-1sp53``
+- [X] Fetch everything via ``PreparedStatement/fetchAll()-3h0eg``
+- [X] Incremental fetching via ``PreparedStatement/step()-3wy2j``
 #### ✅ Dynamic safe query building
 ```swift
 func findProducts(filter: ProducFilter) async throws -> [Product] {
@@ -175,3 +150,18 @@ let row = try await statement.step()
 try await statement.finalize()
 let nextRow = try await statement.step() // Nope!
 ```
+
+## Topics
+
+### Making Queries
+- ``Database``
+- ``PreparedStatement``
+- ``BoundQuery``
+- ``SQLPrimitiveEncodable``
+
+### Decoding Values
+- ``SQLiteValue``
+- ``SQLNull``
+- ``SQLiteBlob``
+- ``Row``
+- ``SQLPrimitiveDecodable``

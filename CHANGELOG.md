@@ -7,6 +7,13 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+### Added
+- `https://github.com/apple/swift-docc-plugin` as a dependancy
+
+### Removed
+- `RowidSelector` enum and the corresponding `rowid:` parameter of `Database/prepare(_:)`
+- `persistant:` parameter of `Database/prepare(_:)`
+
 ## [0.0.8] - 2024-05-21
 
 ### Added

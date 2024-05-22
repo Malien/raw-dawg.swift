@@ -1,17 +1,17 @@
 import Foundation
 
-public struct SQLDecoder: Decoder {
-    public var codingPath: [any CodingKey] = []
+internal struct SQLDecoder: Decoder {
+    var codingPath: [any CodingKey] = []
     let row: Row
 
-    public var userInfo: [CodingUserInfoKey: Any] = [:]
+    var userInfo: [CodingUserInfoKey: Any] = [:]
 
-    public func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key>
+    func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key>
     where Key: CodingKey {
         KeyedDecodingContainer(RowDecodingContainer(row: row))
     }
 
-    public func unkeyedContainer() throws -> any UnkeyedDecodingContainer {
+    func unkeyedContainer() throws -> any UnkeyedDecodingContainer {
         throw DecodingError.dataCorrupted(
             .init(
                 codingPath: [],
@@ -20,7 +20,7 @@ public struct SQLDecoder: Decoder {
             ))
     }
 
-    public func singleValueContainer() throws -> any SingleValueDecodingContainer {
+    func singleValueContainer() throws -> any SingleValueDecodingContainer {
         guard row.values.count == 1 else {
             throw DecodingError.dataCorrupted(
                 .init(
@@ -33,14 +33,14 @@ public struct SQLDecoder: Decoder {
     }
 }
 
-public struct SQLValueDecoder: Decoder {
+internal struct SQLValueDecoder: Decoder {
     let value: SQLiteValue
 
-    public var codingPath: [any CodingKey]
+    var codingPath: [any CodingKey]
 
-    public var userInfo: [CodingUserInfoKey: Any] = [:]
+    var userInfo: [CodingUserInfoKey: Any] = [:]
 
-    public func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key>
+    func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key>
     where Key: CodingKey {
         throw DecodingError.dataCorrupted(
             .init(
@@ -50,7 +50,7 @@ public struct SQLValueDecoder: Decoder {
             ))
     }
 
-    public func unkeyedContainer() throws -> any UnkeyedDecodingContainer {
+    func unkeyedContainer() throws -> any UnkeyedDecodingContainer {
         throw DecodingError.dataCorrupted(
             .init(
                 codingPath: codingPath,
@@ -59,7 +59,7 @@ public struct SQLValueDecoder: Decoder {
             ))
     }
 
-    public func singleValueContainer() throws -> any SingleValueDecodingContainer {
+    func singleValueContainer() throws -> any SingleValueDecodingContainer {
         ValueDecodingContainer(value: value, codingPath: codingPath)
     }
 }
