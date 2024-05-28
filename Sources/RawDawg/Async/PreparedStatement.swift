@@ -7,20 +7,6 @@ import Foundation
     import CSQLite
 #endif
 
-/// A wrapper around the `sqlite3_stmt` pointer.
-internal struct PreparedStatementPtr: @unchecked Sendable {
-    var ptr: OpaquePointer
-}
-
-/// Just a type wrapper around `*const c_char` to make it more Swift-y
-internal struct CString: @unchecked Sendable {
-    var ptr: UnsafePointer<CChar>
-
-    func toOwned() -> String {
-        String(cString: self.ptr)
-    }
-}
-
 /// Prepared statement returned from the ``Database/prepare(_:)`` function.
 ///
 /// Holds and manages the underlying `sqlite3_stmt` pointer. It is a non-copyable type,
@@ -58,7 +44,7 @@ internal struct CString: @unchecked Sendable {
 /// - ``fetchOptional()-92nz3``
 /// - ``fetchOptional()-1sp53``
 public struct PreparedStatement: ~Copyable, Sendable {
-    private let db: Database
+    private let conn: SharedConnection
     private let stmt: PreparedStatementPtr
     /// I don't really understand swift's restriction on `discard self` being restricted to trivially destructible types.
     /// Since we can't use `discard self`, here's the flag, that `.finalize()` was called explicitly before.
@@ -71,8 +57,8 @@ public struct PreparedStatement: ~Copyable, Sendable {
     /// These are Swift string now. Just to avoid conversions on every `.step()` call
     private let columnNames: [String]
 
-    internal init(db: Database, stmt: PreparedStatementPtr, columnNames: [CString]) {
-        self.db = db
+    internal init(conn: SharedConnection, stmt: PreparedStatementPtr, columnNames: [CString]) {
+        self.conn = conn
         self.stmt = stmt
         // We might not need to copy names into swift strings in the future, for now, we do
         self.columnNames = columnNames.map { String(cString: $0.ptr) }
@@ -88,7 +74,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     /// will automatically finilize the statement upon completion, and surface any errors that might occur.
     public consuming func finalize() async throws {
         self.finalized = true
-        try await self.db.finalize(statement: self.stmt)
+        try await self.conn.finalize(statement: self.stmt)
     }
     
     /// Run the statement, for when the query result doesn't matter.
@@ -106,7 +92,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     @discardableResult
     public consuming func run() async throws -> InsertionStats {
         try await finalizeAfter { statement in
-            try await statement.db.run(statement: statement.stmt)
+            try await statement.conn.run(statement: statement.stmt)
         }
     }
 
@@ -125,7 +111,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
         if finished {
             return nil
         }
-        if let values = try await self.db.step(
+        if let values = try await self.conn.step(
             statement: self.stmt, columnCount: self.columnNames.count)
         {
             return Row(columns: columnNames, values: values[...])
@@ -198,7 +184,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
     public consuming func fetchAll() async throws -> [Row] {
         let columns = self.columnNames
         return try await finalizeAfter { statement in
-            try await statement.db.fetchAll(
+            try await statement.conn.fetchAll(
                 statement: statement.stmt, columnCount: statement.columnNames.count
             )
             .chunks(ofCount: columns.count).map {
@@ -416,7 +402,7 @@ public struct PreparedStatement: ~Copyable, Sendable {
         if self.finalized { return }
 
         let stmnt = self.stmt
-        let db = self.db
+        let db = self.conn
 
         // Requirement on Task is the only thing preventing this from building on macOS < 10.15
         Task {
@@ -427,16 +413,4 @@ public struct PreparedStatement: ~Copyable, Sendable {
             }
         }
     }
-}
-
-// This is hacky af. But from what I've seen at compiler explorer, simple constant folding optimizes this pattern easily.
-// This might get a lot simpler in swift 6, yet in the meantime, damn do I feel clever af.
-private func packLength<each T>(_ witness: repeat each T) -> Int {
-    var length = 0
-    _ = (repeat increment(each witness, &length))
-    return length
-}
-
-private func increment<T>(_ dummy: T, _ value: inout Int) {
-    value += 1
 }

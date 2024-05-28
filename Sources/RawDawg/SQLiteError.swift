@@ -19,7 +19,7 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     /// An SQLite3 error without any additional context
     case unknown(code: Int32, message: String)
     /// SQLite3 error which occurred while opening a database connection via ``Database/init(filename:mode:)``
-    case openDatabase(code: Int32, message: String, filename: String, mode: Database.OpenMode)
+    case openDatabase(code: Int32, message: String, filename: String, mode: OpenMode)
     /// SQLite3 error which occurred while preparing a statement via ``Database/prepare(_:)``
     case prepareStatement(code: Int32, message: String, query: BoundQuery)
     /// When the supplied statement doesn't contain statment at all (aka. empty/blank string, or just SQL comments)
@@ -74,7 +74,7 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
 
     internal enum Context {
         case unknown
-        case openDatabase(filename: String, mode: Database.OpenMode)
+        case openDatabase(filename: String, mode: OpenMode)
         case prepareStatement(query: BoundQuery)
     }
     internal init(sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {

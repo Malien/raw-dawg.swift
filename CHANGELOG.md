@@ -7,6 +7,13 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ## [Unreleased]
 
+### Added
+- Syncronous family of db access objects: `SyncConnection`, `SyncPreparedStatement`
+
+### Changed
+- Renamed `Database` to `SharedConnection`
+- Moved `OpenMode` from `Database` to the top level
+
 ## [0.1.1] - 2024-05-22
 
 ### Added

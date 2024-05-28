@@ -4,17 +4,17 @@ import XCTest
 
 final class SQLiteM_swiftTests: XCTestCase {
     func testCanSuccessfullyOpenInMemoryDB() throws {
-        _ = try Database(filename: ":memory:")
+        _ = try SharedConnection(filename: ":memory:")
     }
 
     func testCanPrepareStatement() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let stmt = try await db.prepare("SELECT 1")
         try await stmt.finalize()
     }
 
     func testCanSelectInteger() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var stmt = try await db.prepare("SELECT 1")
         let row = try await stmt.step()!
         XCTAssertEqual(
@@ -25,7 +25,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testCanSelectTypedInteger() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let res: Int = try await db.prepare("SELECT 1").fetchOne()
         XCTAssertEqual(res, 1)
     }
@@ -36,7 +36,7 @@ final class SQLiteM_swiftTests: XCTestCase {
             case completed = 1
             case failed = 2
         }
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let states: [State] = try await db.prepare(
             """
             with cte(state) as (values (0), (1), (2))
@@ -50,7 +50,7 @@ final class SQLiteM_swiftTests: XCTestCase {
         enum State: String, Codable {
             case pending, completed, failed
         }
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let states: [State] = try await db.prepare(
             """
             with cte(state) as (values ('pending'), ('completed'), ('failed'))
@@ -61,7 +61,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testCantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let statement = try await db.prepare("select 1, 2")
         try await assertThrows(statement: statement) {
             (statement: consuming PreparedStatement) async throws in
@@ -70,7 +70,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testCanSelectAllKindsOfThings() async throws {
-        let db = try Database(filename: ":memory:")
+        let db = try SharedConnection(filename: ":memory:")
         var stmt = try await db.prepare(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil")
         let row = try await stmt.step()!
@@ -81,8 +81,8 @@ final class SQLiteM_swiftTests: XCTestCase {
         try await stmt.finalize()
     }
 
-    private func prepareSampleDB() async throws -> Database {
-        let db = try Database(filename: ":memory:")
+    private func prepareSampleDB() async throws -> SharedConnection {
+        let db = try SharedConnection(filename: ":memory:")
         try await db.execute(
             """
             create table test(
@@ -161,7 +161,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testCanSelectDecodable() async throws {
-        let db = try Database(filename: ":memory:")
+        let db = try SharedConnection(filename: ":memory:")
         var stmt = try await db.prepare(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil")
         let row: SpecialRow? = try await stmt.step()
@@ -239,14 +239,14 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testInsuffiecientlyBoundQueryDoesntExecute() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         try await assertThrows {
             _ = try await db.prepare("select ?")
         }
     }
 
     func testOverboundQueryDoesntExecute() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let query = BoundQuery(raw: "select 1", bindings: [.integer(5)])
         try await assertThrows {
             _ = try await db.prepare(query)
@@ -254,7 +254,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testBoundQueryProperlyRuns() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let res: SpecialRow = try await db.prepare(
             """
             select
@@ -304,7 +304,7 @@ final class SQLiteM_swiftTests: XCTestCase {
 
         let valuesClause = "(" + input.map { "'\($0)'" }.joined(separator: "), (") + ")"
 
-        let db = try Database(filename: ":memory:")
+        let db = try SharedConnection(filename: ":memory:")
         try await db.execute(
             """
             create table if not exists migrations (
@@ -332,7 +332,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testWillDecodeDates() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
 
         struct DateRow: Equatable, Codable {
             var epochSeconds: Date
@@ -364,7 +364,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     // Swift's Date parsing, understandably, doesn't like dates that don't end on "Z" or "±HH:MM".
     // My driver has to handle these cases
     func testWillSQLiteDates() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let date: Date = try await db.prepare(
             "select datetime('2024-02-03 08:12:23.032Z', 'subsec')"
         ).fetchOne()
@@ -377,7 +377,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testFetchOneParameterPackDecode() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let (i64, f64, string, blob, _): (Int, Double, String, SQLiteBlob, SQLNull) =
             try await db.prepare("SELECT 1, 2.0, 'text', unhex('42069f'), null").fetchOne()
         XCTAssertEqual(i64, 1)
@@ -387,7 +387,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testFetchAllParameterPackDecode() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let rows: [(Int, String?)] = try await db.prepare(
             """
             with cte(number, string) as (values (1, 'hello'), (2, null))
@@ -401,7 +401,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testFetchOptionalParameterPackDecode() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let value: (Int, String?)? = try await db.prepare(
             """
             with cte(number, string) as (values (1, 'hello'))
@@ -414,7 +414,7 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func testStepParameterPackDecode() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var statement = try await db.prepare(
             """
             with cte(number, string) as (values (1, 'hello'))
@@ -428,24 +428,24 @@ final class SQLiteM_swiftTests: XCTestCase {
     }
 
     func compileTestFetchOneIsNotAmbigious() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let _: Int = try await db.prepare("select 1").fetchOne()
     }
 
     func compileTestFetchOptionalIsNotAmbigious() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let _: Int? = try await db.prepare("select 1").fetchOptional()
     }
 
     func compileTestStepIsNotAmbigious() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var statement = try await db.prepare("select 1")
         let _: Int? = try await statement.step()
         try await statement.finalize()
     }
     
     func testBoolsAreDecodedAsTheyShould() async throws {
-        let db = try Database(filename: ":memory:", mode: .readOnly)
+        let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let oneTrue: Bool = try await db.prepare("select 1").fetchOne()
         XCTAssertTrue(oneTrue)
         let oneFalse: Bool = try await db.prepare("select 0").fetchOne()

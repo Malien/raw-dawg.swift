@@ -37,7 +37,11 @@ let package = Package(
                 .product(
                     name: "CSQLite", package: "CSQLite",
                     condition: .when(platforms: nonApplePlatforms)),
-            ]),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
         .testTarget(
             name: "RawDawgTests",
             dependencies: ["RawDawg"]),
