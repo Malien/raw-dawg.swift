@@ -2,7 +2,7 @@ import XCTest
 
 @testable import RawDawg
 
-final class SQLiteM_swiftTests: XCTestCase {
+final class AsyncConnection_swiftTests: XCTestCase {
     func testCanSuccessfullyOpenInMemoryDB() throws {
         _ = try SharedConnection(filename: ":memory:")
     }

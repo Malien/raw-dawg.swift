@@ -200,12 +200,10 @@ public struct SyncPreparedStatement: ~Copyable {
         let db = self.conn
 
         // Requirement on Task is the only thing preventing this from building on macOS < 10.15
-        Task {
-            do {
-                try db.finalize(statement: stmnt)
-            } catch let error {
-                log.error("Couldn't finalize prepared statement: \(error)")
-            }
+        do {
+            try db.finalize(statement: stmnt)
+        } catch let error {
+            log.error("Couldn't finalize prepared statement: \(error)")
         }
     }
 }
