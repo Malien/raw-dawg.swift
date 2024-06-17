@@ -1,4 +1,3 @@
-
 /// It is EXPLICITLY unsendable!
 @available(*, unavailable)
 extension SyncConnection: @unchecked Sendable {}
@@ -8,6 +7,12 @@ public struct SyncConnection: ~Copyable {
     
     init(filename: String, mode: OpenMode = .readWrite) throws {
         self.conn = try .init(filename: filename, mode: mode)
+    }
+
+    /// ## SAFETY
+    ///  the underlying connection has to be alive and not shared with any other ``SyncConnection`` or ``SharedConnection`` instance
+    internal init(unsafeFromUnmanaged conn: UnmanagedSyncConnection) {
+        self.conn = conn
     }
     
     /// ## SAFETY
@@ -193,11 +198,31 @@ public struct SyncConnection: ~Copyable {
     public mutating func fetchOptional<T: Decodable>(_ query: BoundQuery) throws -> T? {
         try unsafePrepare(query).fetchOptional()
     }
+    
+    public mutating func transaction<T>(_ kind: Transaction.Kind = .deferred, block: (inout Transaction) throws -> T) throws -> T {
+        try self.run("begin \(raw: kind.rawValue)")
+        var tx = Transaction(conn: self.conn)
+        let result: T
+        do {
+            result = try block(&tx)
+        } catch {
+            try tx.rollback()
+            throw error
+        }
+        try tx.commit()
+        return result
+    }
 
-    consuming func close() throws {
+    public consuming func close() throws {
         let db = self.conn
         discard self
         try db.close()
+    }
+
+    internal consuming func unsafeReleaseUnmanaged() -> UnmanagedSyncConnection {
+        let db = self.conn
+        discard self
+        return db
     }
     
     deinit {
@@ -208,3 +233,4 @@ public struct SyncConnection: ~Copyable {
         }
     }
 }
+

@@ -4,6 +4,9 @@ import SQLite3
 import CSQLite
 #endif
 
+@available(*, unavailable)
+extension UnmanagedSyncConnection: Sendable {}
+
 internal struct UnmanagedSyncConnection {
     private let db: OpaquePointer
 
@@ -253,6 +256,7 @@ internal struct UnmanagedSyncConnection {
         return result
     }
 
+    @discardableResult
     internal func run(statement: PreparedStatementPtr) throws -> InsertionStats {
         let res = sqlite3_step(statement.ptr)
         switch res {
@@ -281,6 +285,19 @@ internal struct UnmanagedSyncConnection {
             throw self.lastError(withCode: res)
         }
     }
+    
+    internal func begin(kind: Transaction.Kind) throws {
+        let query = "begin \(kind.rawValue)"
+        var stmt: OpaquePointer? = nil
+        try throwing(context: .begin(kind: kind)) {
+            sqlite3_prepare_v3(
+                db: self.db,
+                zSql: query,
+                nByte: Int32(query.utf8.count),
+                prepFlags: 0,
+                ppStmt: &stmt,
+                pzTail: nil
+            )
+        }
+    }
 }
-
-

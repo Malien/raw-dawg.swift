@@ -22,6 +22,8 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     case openDatabase(code: Int32, message: String, filename: String, mode: OpenMode)
     /// SQLite3 error which occurred while preparing a statement via ``Database/prepare(_:)``
     case prepareStatement(code: Int32, message: String, query: BoundQuery)
+    /// SQLite3 error which occurred while firing a begin statement
+    case begin(code: Int32, message: String, kind: Transaction.Kind)
     /// When the supplied statement doesn't contain statment at all (aka. empty/blank string, or just SQL comments)
     ///
     /// Thrown by ``Database/prepare(_:)``
@@ -76,6 +78,7 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
         case unknown
         case openDatabase(filename: String, mode: OpenMode)
         case prepareStatement(query: BoundQuery)
+        case begin(kind: Transaction.Kind)
     }
     internal init(sqliteErrorCode code: Int32, message: String, context: Context = .unknown) {
         switch context {
@@ -83,8 +86,10 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
             self = .unknown(code: code, message: message)
         case .openDatabase(let filename, let mode):
             self = .openDatabase(code: code, message: message, filename: filename, mode: mode)
-        case .prepareStatement(let query):
+        case .prepareStatement(query: let query):
             self = .prepareStatement(code: code, message: message, query: query)
+        case .begin(kind: let kind):
+            self = .begin(code: code, message: message, kind: kind)
         }
     }
 
@@ -95,6 +100,8 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
             "SQLite Error \(code): \(message) when trying to open a database (filename=\(filename), mode=\(mode))"
         case .prepareStatement(let code, let message, let query):
             "SQLite Error \(code): \(message) in \(query.queryString) \(query.bindings)"
+        case .begin(code: let code, message: let message, kind: let kind):
+            "SQLite Error \(code): \(message) when trying to begin a \(kind) transaction"
         case .emptyQuery(let query):
             "Cannot prepare an empty query. \(query.queryString) \(query.bindings)"
         case let .bindingMissmatch(query: query, expected: expected, got: got) where got < expected:
