@@ -6,13 +6,13 @@ Cause there's nothing wrong with writing raw SQL
 ### Package isn't quite ready yet
 - [X] Parametrized updates/inserts via `db.prepare`
 - [X] SPM 0.0.1 tag
-- [ ] Transaction support
+- [X] Transaction support
 - [ ] Blob streaming
 - [ ] Custom `AsyncRowDecodable` protocol based deserialization
 - [ ] `@AsyncRowDecodable` macro to conform automagically
 - [ ] Additional dynamic query building capabilities(?)
-- [ ] Pooling
-- [ ] Syncronous API
+- [X] Pooling
+- [X] Syncronous API
 - [X] Date-time support
 - [ ] URL support
 - [ ] ~~SharedStatement~~
