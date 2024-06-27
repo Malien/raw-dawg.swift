@@ -21,7 +21,7 @@ public enum OpenMode: Sendable, Equatable, Hashable {
     /// - Parameter create: Whether to create the database file if it doesn't already exist.
     case readWrite(create: Bool)
     /// An alias for `.readWrite(create: true)`.
-    public static var readWrite = Self.readWrite(create: true)
+    public static let readWrite = Self.readWrite(create: true)
 }
 
 /// A wrapper around the `sqlite3_stmt` pointer.

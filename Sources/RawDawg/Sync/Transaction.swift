@@ -1,4 +1,8 @@
 public struct Transaction: ~Copyable {
+    public enum Kind: String, Sendable {
+        case deferred, immediate, exclusive
+    }
+
     private let conn: UnmanagedSyncConnection
 
     internal init(conn: UnmanagedSyncConnection) {
@@ -76,10 +80,6 @@ public struct Transaction: ~Copyable {
 
     public func fetchOptional<T: Decodable>(_ query: BoundQuery) throws -> T? {
         try unsafePrepare(query).fetchOptional()
-    }
-
-    public enum Kind: String {
-        case deferred, immediate, exclusive
     }
 
     internal consuming func commit() throws {

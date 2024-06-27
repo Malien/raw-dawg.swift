@@ -443,7 +443,7 @@ final class AsyncConnection_swiftTests: XCTestCase {
         let _: Int? = try await statement.step()
         try await statement.finalize()
     }
-    
+
     func testBoolsAreDecodedAsTheyShould() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let oneTrue: Bool = try await db.prepare("select 1").fetchOne()

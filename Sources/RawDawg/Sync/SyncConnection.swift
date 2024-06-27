@@ -219,6 +219,10 @@ public struct SyncConnection: ~Copyable {
         try db.close()
     }
 
+    /// Release the underlying unmanaged connection without closing it.
+    ///
+    /// ## SAFETY
+    /// Please don't share the underlying connection. It is not safe to do so.
     internal consuming func unsafeReleaseUnmanaged() -> UnmanagedSyncConnection {
         let db = self.conn
         discard self

@@ -1,13 +1,13 @@
 {
-  "originHash" : "da82cc3a1e93133375b19256787cd5a6810e6012f04ca32133ba923191668845",
+  "originHash" : "64a7541a9e9a3a7116a317e7170cf1436eab49f269af1fd480d865ddcef0e78f",
   "pins" : [
     {
       "identity" : "csqlite",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sbooth/CSQLite.git",
       "state" : {
-        "revision" : "d230151b10c19cffb372b60d2fd2f797da473018",
-        "version" : "3.45.3"
+        "revision" : "1f2069e18563cc15007407d4c4791ca41cdb2d64",
+        "version" : "3.46.0"
       }
     },
     {
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "f6919dfc309e7f1b56224378b11e28bab5bccc42",
         "version" : "1.2.0"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "ee97538f5b81ae89698fd95938896dec5217b148",
+        "version" : "1.1.1"
       }
     },
     {

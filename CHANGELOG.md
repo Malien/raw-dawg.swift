@@ -9,6 +9,8 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 
 ### Added
 - Syncronous family of db access objects: `SyncConnection`, `SyncPreparedStatement`
+- Transaction support on `SyncConnection`s via `.transaction { }`
+- Connection pooling via the `Pool` actor
 
 ### Changed
 - Renamed `Database` to `SharedConnection`
