@@ -7,7 +7,7 @@ import Foundation
     import CSQLite
 #endif
 
-/// Prepared statement returned from the ``Database/prepare(_:)`` function.
+/// Prepared statement returned from the ``SharedConnection/prepare(_:)`` function.
 ///
 /// Holds and manages the underlying `sqlite3_stmt` pointer. It is a non-copyable type,
 /// and upon deinitialization, it will automatically destroy any resources associated with it.
@@ -22,23 +22,27 @@ import Foundation
 /// call ``PreparedStatement/finalize()`` explicitly, since the deinitialization is done asynchronously and
 /// any errors that might occur during the finalization will be logged, but are ultimately ignored.
 ///
-/// All of the methods run on the ``Database`` actor that created the prepared statement, and thus two
+/// All of the methods run on the ``SharedConnection`` actor that created the prepared statement, and thus two
 /// are tied together.
 ///
 /// ## Topics
 /// - ``run()``
+///
 /// ### Incrementally stepping through rows
 /// - ``step()-76bxz``
 /// - ``step()-92san``
 /// - ``step()-3wy2j``
+///
 /// ### Fetching all rows
 /// - ``fetchAll()-7rh3m``
 /// - ``fetchAll()-6jov4``
 /// - ``fetchAll()-3h0eg``
+///
 /// ### Fetching a single row
 /// - ``fetchOne()-o1ui``
 /// - ``fetchOne()-8yva9``
 /// - ``fetchOne()-4grfr``
+///
 /// ### Fetching an optional row
 /// - ``fetchOptional()-30gfy``
 /// - ``fetchOptional()-92nz3``

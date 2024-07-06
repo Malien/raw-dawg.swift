@@ -7,7 +7,8 @@ import Logging
 
 internal let log = Logger(label: "com.github.malien.raw-dawg")
 
-/// Read/write mode of the database connection to be opened by ``Database/init(filename:mode:)``.
+/// Read/write mode of the database connection to be opened by ``SyncConnection/init(filename:mode:)``,
+/// ``SharedConnection/init(filename:mode:)``, and ``Pool/init(filename:mode:maxPoolSize:)``.
 ///
 /// For convenience, the static property ``OpenMode/readWrite`` is provided, which is equivalent to
 /// `.readWrite(create:)`.
@@ -22,6 +23,24 @@ public enum OpenMode: Sendable, Equatable, Hashable {
     case readWrite(create: Bool)
     /// An alias for `.readWrite(create: true)`.
     public static let readWrite = Self.readWrite(create: true)
+}
+
+/// The result of an insert/update operation, achieved from ``PreparedStatement/run()``.
+///
+/// ```swift
+/// let stats = try db.prepare("INSERT INTO table (column) VALUES (1), (2)").run()
+/// print("Last inserted rowid: \(stats.lastInsertedRowid)")
+/// print("Rows inserted: \(stats.rowsAffected)")
+/// ```
+public struct InsertionStats: Equatable, Hashable, Sendable {
+    /// The rowid of the last inserted row.
+    public var lastInsertedRowid: sqlite3_int64
+    /// The number of rows affected by the last operation.
+    ///
+    /// This can be either the number of rows inserted, updated or deleted.
+    public var rowsAffected: sqlite3_int64
+    /// The total number of rows affected by the last operation, including foregin key cascades.
+    public var totalRowsAffected: sqlite3_int64
 }
 
 /// A wrapper around the `sqlite3_stmt` pointer.

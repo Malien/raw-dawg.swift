@@ -30,46 +30,31 @@ import Logging
 /// }
 /// ```
 
-/// The result of an insert/update operation, achieved from ``PreparedStatement/run()``.
-///
-/// ```swift
-/// let stats = try db.prepare("INSERT INTO table (column) VALUES (1), (2)").run()
-/// print("Last inserted rowid: \(stats.lastInsertedRowid)")
-/// print("Rows inserted: \(stats.rowsAffected)")
-/// ```
-public struct InsertionStats: Equatable, Hashable, Sendable {
-    /// The rowid of the last inserted row.
-    public var lastInsertedRowid: sqlite3_int64
-    /// The number of rows affected by the last operation.
-    ///
-    /// This can be either the number of rows inserted, updated or deleted.
-    public var rowsAffected: sqlite3_int64
-    /// The total number of rows affected by the last operation, including foregin key cascades.
-    public var totalRowsAffected: sqlite3_int64
-}
-
 /// An asyncronous sqlite3 database connection.
 ///
 /// Encapsulates the coordination and the synchronization of the sqlite3 database connection.
 /// Managed database connection is itself is not thread-safe; actor isolation makes it safe to
 /// access the database APIs from any thread.
 ///
-/// The primary way to interact with the database is through the ``Database/prepare(_:)`` method.
+/// The primary way to interact with the database is through the ``SharedConnection/prepare(_:)`` method.
 /// ```swift
-/// let db = try Database(filename: "file.sqlite")
-/// let statement = try db.prepare("SELECT * FROM table")
-/// let rows = try statement.fetchAll()
+/// let db = try SharedConnection(filename: "file.sqlite")
+/// let statement = try await db.prepare("SELECT * FROM table")
+/// let rows = try await statement.fetchAll()
 /// ```
 ///
 /// Dropping all the references to the Database actor will close the database connection. Errors
 /// encountered during the closing of the database connection are logged, but ultimately ignored.
 ///
 /// ## Thread-safety and Concurrency
-/// `Database` type itself is safe to use across threads, the access is synchronized via swift actor
+/// `SharedConnection` type itself is safe to use across threads, the access is synchronized via swift actor
 /// isolation model. Does not provide concurrency. Operations are serialized, but not necessarily
 /// executed in order as swift actor model does not guarantee the order of execution.
 public actor SharedConnection {
-    fileprivate let unsafeConn: UnmanagedSyncConnection
+    // nonisolated(unsafe) is needed to circumvent the swift 6 concurrency checking constraints: see deinit
+    // Every other use should be guarded via conn, hence unguarded uses are screaming UNSAFE
+    private nonisolated(unsafe) let UNSAFE_conn: UnmanagedSyncConnection
+    private var conn: UnmanagedSyncConnection { UNSAFE_conn }
     
     /// Opens a database connection to the file at the given path. With the given read/write mode.
     ///
@@ -89,7 +74,7 @@ public actor SharedConnection {
     //                  this might be an issue as the underlying connection is not thread-safe.
     //                  It should be ok, since there is no concurrent access to the actor state anyway.
     public init(filename: String, mode: OpenMode = .readWrite) throws {
-        self.unsafeConn = try .init(filename: filename, mode: mode)
+        self.UNSAFE_conn = try .init(filename: filename, mode: mode)
     }
 
     /// Prepares a SQL query for execution.
@@ -118,44 +103,42 @@ public actor SharedConnection {
     //                  - Provide `unnamed*` set of APIs for that casa.
     //                  - Don't re-allocate C strings into swift ones from calls to `sqlite3_column_name`.
     public func prepare(_ query: BoundQuery) throws -> PreparedStatement {
-        let (ptr, columns) = try unsafeConn.prepare(query)
+        let (ptr, columns) = try conn.prepare(query)
         return PreparedStatement(conn: self, stmt: ptr, columnNames: columns)
     }
 
     /// Executes a series of SQL statements separated by semicolons.
     ///
     /// NOTE: This method is **not safe to use with untrusted input**. It is recommended to use
-    /// ``Database/prepare(_:)`` for executing queries with interpolated values.
+    /// ``SharedConnection/prepare(_:)`` for executing queries with interpolated values.
     public func execute(_ query: String) throws {
-        try unsafeConn.execute(query)
+        try conn.execute(query)
     }
 
     internal func finalize(statement: PreparedStatementPtr) throws {
-        try unsafeConn.finalize(statement: statement)
+        try conn.finalize(statement: statement)
     }
 
     internal func step(statement: PreparedStatementPtr, columnCount: Int) throws -> [SQLiteValue]? {
-        try unsafeConn.step(statement: statement, columnCount: columnCount)
+        try conn.step(statement: statement, columnCount: columnCount)
     }
 
     internal func fetchAll(statement: PreparedStatementPtr, columnCount: Int) throws
         -> [SQLiteValue]
     {
-        try unsafeConn.fetchAll(statement: statement, columnCount: columnCount)
+        try conn.fetchAll(statement: statement, columnCount: columnCount)
     }
 
     internal func run(statement: PreparedStatementPtr) throws -> InsertionStats {
-        try unsafeConn.run(statement: statement)
+        try conn.run(statement: statement)
     }
 
     deinit {
-        // This might be hella unsafe as the thread on which deinit is called synchronously 
-        // is not neccessarily the one that opened and maanges the connection. Don't know. 
-        // Solving this would require doing own DispatchQueue synchronisation. I don't want it. 
-        // I'd like to stay in the realm of swift actors. Or this might be a non-issue, since 
-        // the is no concurrent/parallel access to the actor/database state.
+        // This unguarded use is fine, since it is fine to call `sqlite3_close` from any thread,
+        // provided doing so is not done concurrently. Since the connection is not shared, we can
+        // guarantee that no parallel access is happenning.
         do {
-            try unsafeConn.close()
+            try UNSAFE_conn.close()
         } catch {
             log.error("Database close failed. \(error)")
         }

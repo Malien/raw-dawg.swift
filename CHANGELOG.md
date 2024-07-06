@@ -11,10 +11,14 @@ and this project **DOES NOT** adhere to [Semantic Versioning](https://semver.org
 - Syncronous family of db access objects: `SyncConnection`, `SyncPreparedStatement`
 - Transaction support on `SyncConnection`s via `.transaction { }`
 - Connection pooling via the `Pool` actor
+- Documentation and articles for the `SyncConnection` family of types
 
 ### Changed
 - Renamed `Database` to `SharedConnection`
 - Moved `OpenMode` from `Database` to the top level
+
+### Fixed
+- Preparations for Swift 6 compatability (full concurrency checking)
 
 ## [0.1.1] - 2024-05-22
 

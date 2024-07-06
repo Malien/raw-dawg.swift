@@ -18,15 +18,17 @@
 public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     /// An SQLite3 error without any additional context
     case unknown(code: Int32, message: String)
-    /// SQLite3 error which occurred while opening a database connection via ``Database/init(filename:mode:)``
+    /// SQLite3 error which occurred while opening a database connection via ``SyncConnection/init(filename:mode:)``,
+    /// ``SharedConnection/init(filename:mode:)``, or ``Pool/init(filename:mode:maxPoolSize:)``
     case openDatabase(code: Int32, message: String, filename: String, mode: OpenMode)
-    /// SQLite3 error which occurred while preparing a statement via ``Database/prepare(_:)``
+    /// SQLite3 error which occurred while preparing a statement via ``SharedConnection/prepare(_:)``;
+    /// ``Pool`` or ``SyncConnection``'s `fetch` operations
     case prepareStatement(code: Int32, message: String, query: BoundQuery)
     /// SQLite3 error which occurred while firing a begin statement
     case begin(code: Int32, message: String, kind: Transaction.Kind)
     /// When the supplied statement doesn't contain statment at all (aka. empty/blank string, or just SQL comments)
     ///
-    /// Thrown by ``Database/prepare(_:)``
+    /// Thrown by ``SharedConnection/prepare(_:)``, ``SyncConnection``
     ///
     /// ```swift
     /// try await db.prepare("-- haha empty query") // <- will error
@@ -34,7 +36,7 @@ public enum SQLiteError: Error, CustomStringConvertible, Sendable {
     case emptyQuery(query: BoundQuery)
     /// If the number of supplied binding placeholders and actual binding values differ
     ///
-    /// Thrown by ``Database/prepare(_:)``
+    /// Thrown by ``SharedConnection/prepare(_:)``, ``SyncConnection``
     ///
     /// ```swift
     /// try await db.prepare("select ?, \(42)") // <- will error

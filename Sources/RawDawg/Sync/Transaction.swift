@@ -1,3 +1,12 @@
+/// The transaction object given by ``SyncConnection/transaction(_:block:)``
+///
+/// Used in place of the ``SyncConnection``, while the database is under transaction.
+///
+/// The methods are equivalent to those of ``SyncConnection``
+///
+/// ### Thread-safety and Concurrency
+/// Calling `Transaction` methods is not thread-safe, and should not be done concurrently.
+/// The type itself is explicity NOT `Sendable`
 public struct Transaction: ~Copyable {
     public enum Kind: String, Sendable {
         case deferred, immediate, exclusive
