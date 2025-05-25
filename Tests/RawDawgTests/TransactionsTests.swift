@@ -38,8 +38,8 @@ import Foundation
     @Test func twoInMemoryDBsAreDifferent() throws {
         let dbname = UUID().uuidString + ".rawdawgtest.sqlite"
         let dburl = FileManager.default.temporaryDirectory.appendingPathComponent(dbname)
-        var db1 = try SyncConnection(filename: dburl.absoluteString, mode: .readWrite(create: true))
-        var db2 = try SyncConnection(filename: dburl.absoluteString, mode: .readWrite(create: true))
+        var db1 = try SyncConnection(filename: dburl.path(), mode: .readWrite(create: true))
+        var db2 = try SyncConnection(filename: dburl.path(), mode: .readWrite(create: true))
         defer { try? FileManager.default.removeItem(at: dburl) }
         
         try db1.execute("create table t(x); insert into t values (42)")
