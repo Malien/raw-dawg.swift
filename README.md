@@ -20,7 +20,7 @@ Cause there's nothing wrong with writing raw SQL
 - [ ] Conform to semantic versioning
 - [ ] SPM 1.0.0 tag
 
-**Note: The package does not conform to semantic versioning for now. Patch releases are breaking**
+**Note: The package does not conform to semantic versioning for now. Minor releases are breaking**
 
 ## Usage
 Add dependancy to the `Package.swift`
