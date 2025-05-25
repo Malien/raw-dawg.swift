@@ -1,37 +1,35 @@
-import XCTest
+import Testing
+import Foundation
 
 @testable import RawDawg
 
-final class SyncConnection_swiftTests: XCTestCase {
-    func testCanSuccessfullyOpenInMemoryDB() throws {
+@Suite struct SyncConnectionTests {
+    @Test func canSuccessfullyOpenInMemoryDB() throws {
         _ = try SyncConnection(filename: ":memory:")
     }
 
-    func testCanPrepareStatement() throws {
+    @Test func canPrepareStatement() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         try db.preparing("select 1") { _ in
-            
+
         }
     }
 
-    func testCanSelectInteger() throws {
+    @Test func canSelectInteger() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let row = try db.preparing("SELECT 1") { stmt in
             try stmt.step()!
         }
-        XCTAssertEqual(
-            row,
-            Row(columns: ["1"], values: [.integer(1)])
-        )
+        #expect(row == Row(columns: ["1"], values: [.integer(1)]))
     }
 
-    func testCanSelectTypedInteger() throws {
+    @Test func canSelectTypedInteger() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let res: Int = try db.fetchOne("SELECT 1")
-        XCTAssertEqual(res, 1)
+        #expect(res == 1)
     }
 
-    func testCanSelectIntegerEnum() throws {
+    @Test func canSelectIntegerEnum() throws {
         enum State: Int, Codable {
             case pending = 0
             case completed = 1
@@ -44,10 +42,10 @@ final class SyncConnection_swiftTests: XCTestCase {
                 select state from cte
             """
         )
-        XCTAssertEqual(states, [.pending, .completed, .failed])
+        #expect(states == [.pending, .completed, .failed])
     }
 
-    func testCanSelectStringEnum() throws {
+    @Test func canSelectStringEnum() throws {
         enum State: String, Codable {
             case pending, completed, failed
         }
@@ -58,27 +56,24 @@ final class SyncConnection_swiftTests: XCTestCase {
                 select state from cte
             """
         )
-        XCTAssertEqual(states, [.pending, .completed, .failed])
+        #expect(states == [.pending, .completed, .failed])
     }
 
-    func testCantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() throws {
+    @Test func cantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
-        XCTAssertThrowsError(
+        #expect(throws: SQLiteError.self) {
             try db.fetchOne("select 1, 2") as Int
-        )
+        }
     }
 
-    func testCanSelectAllKindsOfThings() throws {
+    @Test func canSelectAllKindsOfThings() throws {
         var db = try SyncConnection(filename: ":memory:")
         let row = try db.preparing(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil"
         ) { stmt in
             try stmt.step()!
         }
-        XCTAssertEqual(
-            row,
-            specialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f])
-        )
+        #expect(row == specialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f]))
     }
 
     private func prepareSampleDB() throws -> SyncConnection {
@@ -100,16 +95,16 @@ final class SyncConnection_swiftTests: XCTestCase {
         return db
     }
 
-    func testCanSelectManyRows() throws {
+    @Test func canSelectManyRows() throws {
         var db = try prepareSampleDB()
         let rows = try db.fetchAll("select * from test")
-        XCTAssertEqual(
-            rows,
-            [
+        #expect(
+            rows == [
                 specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]),
                 specialRow(i64: 2, f64: 2.0, string: "second", bytes: [0x02]),
                 specialRow(i64: 3, f64: 3.0, string: "third", bytes: [0x03]),
-            ])
+            ]
+        )
     }
 
     func specialRow(i64: Int64, f64: Double, string: String, bytes: [UInt8]) -> Row {
@@ -138,90 +133,95 @@ final class SyncConnection_swiftTests: XCTestCase {
         }
     }
 
-    func testCanSelectDecodable() throws {
+    @Test func canSelectDecodable() throws {
         var db = try SyncConnection(filename: ":memory:")
         let row: SpecialRow? = try db.preparing(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil"
         ) { stmt in
             try stmt.step()
         }
-        
-        XCTAssertEqual(
-            row,
-            SpecialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f])
-        )
+
+        #expect(row == SpecialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f]))
     }
 
-    func testCanSelectManyDecodables() throws {
+    @Test func canSelectManyDecodables() throws {
         var db = try prepareSampleDB()
         let rows: [SpecialRow] = try db.fetchAll("select * from test")
-        XCTAssertEqual(
-            rows,
-            [
+        #expect(
+            rows == [
                 SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]),
                 SpecialRow(i64: 2, f64: 2.0, string: "second", bytes: [0x02]),
                 SpecialRow(i64: 3, f64: 3.0, string: "third", bytes: [0x03]),
-            ])
+            ]
+        )
     }
 
-    func testCanFetchExistingOptional() throws {
+    @Test func canFetchExistingOptional() throws {
         var db = try prepareSampleDB()
         let row = try db.fetchOptional("select * from test")
-        XCTAssertEqual(row, specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingOptional() throws {
+    @Test func canFetchMissingOptional() throws {
         var db = try prepareSampleDB()
         let row = try db.fetchOptional("select * from test limit 0")
-        XCTAssertEqual(row, nil)
+        #expect(row == nil)
     }
 
-    func testCanFetchExistingDecodableOptional() throws {
+    @Test func canFetchExistingDecodableOptional() throws {
         var db = try prepareSampleDB()
         let row: SpecialRow? = try db.fetchOptional("select * from test")
-        XCTAssertEqual(row, SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingDecodableOptional() throws {
+    @Test func canFetchMissingDecodableOptional() throws {
         var db = try prepareSampleDB()
         let row: SpecialRow? = try db.fetchOptional("select * from test limit 0")
-        XCTAssertEqual(row, nil)
+        #expect(row == nil)
     }
 
-    func testCanFetchExistingOne() throws {
+    @Test func canFetchExistingOne() throws {
         var db = try prepareSampleDB()
         let row = try db.fetchOne("select * from test")
-        XCTAssertEqual(row, specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingOne() throws {
+    @Test func canFetchMissingOne() throws {
         var db = try prepareSampleDB()
-        XCTAssertThrowsError(try db.fetchOne("select * from test limit 0"))
+        #expect(throws: SQLiteError.self) {
+            try db.fetchOne("select * from test limit 0")
+        }
     }
 
-    func testCanFetchExistingDecodableOne() throws {
+    @Test func canFetchExistingDecodableOne() throws {
         var db = try prepareSampleDB()
         let row: SpecialRow = try db.fetchOne("select * from test")
-        XCTAssertEqual(row, SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingDecodableOne() throws {
+    @Test func canFetchMissingDecodableOne() throws {
         var db = try prepareSampleDB()
-        XCTAssertThrowsError(try db.fetchOne("select * from test limit 0") as SpecialRow)
+        #expect(throws: SQLiteError.self) {
+            try db.fetchOne("select * from test limit 0") as SpecialRow
+        }
     }
 
-    func testInsuffiecientlyBoundQueryDoesntExecute() throws {
+    @Test func insuffiecientlyBoundQueryDoesntExecute() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
-        XCTAssertThrowsError(try db.preparing("select ?") { _ in })
+        #expect(throws: SQLiteError.self) {
+            try db.preparing("select ?") { _ in }
+        }
     }
 
-    func testOverboundQueryDoesntExecute() throws {
+    @Test func overboundQueryDoesntExecute() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let query = BoundQuery(raw: "select 1", bindings: [.integer(5)])
-        XCTAssertThrowsError(try db.preparing(query) { _ in })
+        #expect(throws: SQLiteError.self) {
+            try db.preparing(query) { _ in }
+        }
     }
 
-    func testBoundQueryProperlyRuns() throws {
+    @Test func boundQueryProperlyRuns() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let res: SpecialRow = try db.fetchOne(
             """
@@ -233,16 +233,16 @@ final class SyncConnection_swiftTests: XCTestCase {
                 \(SQLNull()) as nil
             """
         )
-        XCTAssertEqual(res, SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
+        #expect(res == SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
     }
 
-    func testCanInterpolateFragment() throws {
+    @Test func canInterpolateFragment() throws {
         var db = try prepareSampleDB()
         let whereClause: BoundQuery = "where f64 > \(1.0)"
         let res: [Int] = try db.fetchAll(
             "select i64 from test \(fragment: whereClause) limit \(1)"
         )
-        XCTAssertEqual(res, [2])
+        #expect(res == [2])
     }
 
     func runReturnsCorrectRowid() throws {
@@ -251,14 +251,11 @@ final class SyncConnection_swiftTests: XCTestCase {
             "insert into test values (42, 6.9, 'text', unhex('0x4269'), null)"
         )
         let lastId: Int64 = try db.fetchOne("select max(rowid) from test")
-        XCTAssertEqual(
-            insertionStats,
-            InsertionStats(
-                lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
-            ))
+        #expect(lastId == insertionStats.lastInsertedRowid)
+        #expect(insertionStats.rowsAffected == 1)
     }
 
-    func testRealWorldUse1() throws {
+    @Test func realWorldUse1() throws {
         let input = [
             "Aaran", "Aaren", "Aarez", "Aarman", "Aaron", "Aaron-James", "Aarron", "Aaryan",
             "Aaryn", "Aayan", "Aazaan", "Abaan", "Abbas", "Abdallah", "Abdalroof", "Abdihakim",
@@ -295,10 +292,10 @@ final class SyncConnection_swiftTests: XCTestCase {
         }
 
         let res: [MyResponse] = try db.fetchAll("select first_name as usernames from users")
-        XCTAssertEqual(res, input.map { MyResponse(usernames: $0) })
+        #expect(res == input.map { MyResponse(usernames: $0) })
     }
 
-    func testWillDecodeDates() throws {
+    @Test func willDecodeDates() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
 
         struct DateRow: Equatable, Codable {
@@ -318,8 +315,8 @@ final class SyncConnection_swiftTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions.insert(.withFractionalSeconds)
 
-        XCTAssertEqual(
-            row,
+        #expect(
+            row ==
             DateRow(
                 epochSeconds: Date(timeIntervalSince1970: 1_716_041_456),
                 epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
@@ -330,7 +327,7 @@ final class SyncConnection_swiftTests: XCTestCase {
     // SQLite's `datetime` functions will return iso8601 strings without "Z" time zone.
     // Swift's Date parsing, understandably, doesn't like dates that don't end on "Z" or "±HH:MM".
     // My driver has to handle these cases
-    func testWillSQLiteDates() throws {
+    @Test func willSQLiteDates() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let date: Date = try db.fetchOne(
             "select datetime('2024-02-03 08:12:23.032Z', 'subsec')"
@@ -340,20 +337,20 @@ final class SyncConnection_swiftTests: XCTestCase {
         formatter.formatOptions.insert(.withFractionalSeconds)
         formatter.timeZone = TimeZone(identifier: "UTC")!
 
-        XCTAssertEqual(date, formatter.date(from: "2024-02-03T08:12:23.032Z"))
+        #expect(date == formatter.date(from: "2024-02-03T08:12:23.032Z"))
     }
 
-    func testFetchOneParameterPackDecode() throws {
+    @Test func fetchOneParameterPackDecode() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let (i64, f64, string, blob, _): (Int, Double, String, SQLiteBlob, SQLNull) =
             try db.fetchOne("SELECT 1, 2.0, 'text', unhex('42069f'), null")
-        XCTAssertEqual(i64, 1)
-        XCTAssertEqual(f64, 2.0)
-        XCTAssertEqual(string, "text")
-        XCTAssertEqual(blob, SQLiteBlob.loaded(Data([0x42, 0x06, 0x9f])))
+        #expect(i64 == 1)
+        #expect(f64 == 2.0)
+        #expect(string == "text")
+        #expect(blob == SQLiteBlob.loaded(Data([0x42, 0x06, 0x9f])))
     }
 
-    func testFetchAllParameterPackDecode() throws {
+    @Test func fetchAllParameterPackDecode() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let rows: [(Int, String?)] = try db.fetchAll(
             """
@@ -361,13 +358,12 @@ final class SyncConnection_swiftTests: XCTestCase {
             select number, string from cte
             """
         )
-        XCTAssertEqual(rows[0].0, 1)
-        XCTAssertEqual(rows[0].1, "hello")
-        XCTAssertEqual(rows[1].0, 2)
-        XCTAssertEqual(rows[1].1, nil)
+        #expect(rows.count == 2)
+        #expect(rows[0] == (1, "hello"))
+        #expect(rows[1] == (2, nil))
     }
 
-    func testFetchOptionalParameterPackDecode() throws {
+    @Test func fetchOptionalParameterPackDecode() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let value: (Int, String?)? = try db.fetchOptional(
             """
@@ -375,12 +371,10 @@ final class SyncConnection_swiftTests: XCTestCase {
             select number, string from cte
             """
         )
-        XCTAssertNotNil(value)
-        XCTAssertEqual(value?.0, 1)
-        XCTAssertEqual(value?.1, "hello")
+        #expect(try #require(value) == (1, "hello"))
     }
 
-    func testStepParameterPackDecode() throws {
+    @Test func stepParameterPackDecode() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let value: (Int, String?)? = try db.preparing(
             """
@@ -390,37 +384,33 @@ final class SyncConnection_swiftTests: XCTestCase {
         ) { statement in
             try statement.step()
         }
-        XCTAssertNotNil(value)
-        XCTAssertEqual(value?.0, 1)
-        XCTAssertEqual(value?.1, "hello")
+        #expect(try #require(value) == (1, "hello"))
     }
 
-    func compileTestFetchOneIsNotAmbigious() throws {
+    @Test func compileTestFetchOneIsNotAmbigious() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let _: Int = try db.fetchOne("select 1")
     }
 
-    func compileTestFetchOptionalIsNotAmbigious() throws {
+    @Test func compileTestFetchOptionalIsNotAmbigious() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let _: Int? = try db.fetchOptional("select 1")
     }
 
-    func compileTestStepIsNotAmbigious() throws {
+    @Test func compileTestStepIsNotAmbigious() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let _: Int? = try db.preparing("select 1") { statement in
             try statement.step()
         }
     }
-    
-    func testBoolsAreDecodedAsTheyShould() throws {
+
+    @Test func boolsAreDecodedAsTheyShould() throws {
         var db = try SyncConnection(filename: ":memory:", mode: .readOnly)
         let oneTrue: Bool = try db.fetchOne("select 1")
-        XCTAssertTrue(oneTrue)
+        #expect(oneTrue)
         let oneFalse: Bool = try db.fetchOne("select 0")
-        XCTAssertFalse(oneFalse)
+        #expect(!oneFalse)
         let inTuple: (Bool, Bool, Bool) = try db.fetchOne("select 0, 1, 69")
-        XCTAssertFalse(inTuple.0)
-        XCTAssertTrue(inTuple.1)
-        XCTAssertTrue(inTuple.2)
+        #expect(inTuple == (false, true, true))
     }
 }
