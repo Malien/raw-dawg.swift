@@ -10,9 +10,6 @@ extension UnmanagedSyncConnection: Sendable {}
 internal struct UnmanagedSyncConnection {
     private let db: OpaquePointer
 
-    // MAINTAINER NOTE: .init is called synchronously from the thread that creates the actor.
-    //                  this might be an issue as the underlying connection is not thread-safe.
-    //                  It should be ok, since there is no concurrent access to the actor state anyway.
     init(filename: String, mode: OpenMode = .readWrite) throws {
         // Apple's SQLite3 by the looks of things is either compiled without SQLITE_OMIT_AUTOINIT or
         // is doing initialization by itself (likely as a dynamically linked library constructor).
@@ -89,7 +86,7 @@ internal struct UnmanagedSyncConnection {
             if let cStr = sqlite3_column_name(stmt, $0) {
                 CString(ptr: cStr)
             } else {
-                fatalError("Couldn't allocate column name")
+                fatalError("Couldn't allocate memory for the column name")
             }
         }
         let bindingCount = sqlite3_bind_parameter_count(stmt)

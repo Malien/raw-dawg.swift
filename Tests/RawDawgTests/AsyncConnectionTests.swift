@@ -1,36 +1,34 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import RawDawg
 
-final class AsyncConnection_swiftTests: XCTestCase {
-    func testCanSuccessfullyOpenInMemoryDB() throws {
+@Suite() struct AsyncConnections {
+    @Test func canSuccessfullyOpenInMemoryDB() throws {
         _ = try SharedConnection(filename: ":memory:")
     }
 
-    func testCanPrepareStatement() async throws {
+    @Test func canPrepareStatement() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let stmt = try await db.prepare("SELECT 1")
         try await stmt.finalize()
     }
 
-    func testCanSelectInteger() async throws {
+    @Test func canSelectInteger() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var stmt = try await db.prepare("SELECT 1")
         let row = try await stmt.step()!
-        XCTAssertEqual(
-            row,
-            Row(columns: ["1"], values: [.integer(1)])
-        )
+        #expect(row == Row(columns: ["1"], values: [.integer(1)]))
         try await stmt.finalize()
     }
 
-    func testCanSelectTypedInteger() async throws {
+    @Test func canSelectTypedInteger() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let res: Int = try await db.prepare("SELECT 1").fetchOne()
-        XCTAssertEqual(res, 1)
+        #expect(res == 1)
     }
 
-    func testCanSelectIntegerEnum() async throws {
+    @Test func canSelectIntegerEnum() async throws {
         enum State: Int, Codable {
             case pending = 0
             case completed = 1
@@ -43,10 +41,10 @@ final class AsyncConnection_swiftTests: XCTestCase {
                 select state from cte
             """
         ).fetchAll()
-        XCTAssertEqual(states, [.pending, .completed, .failed])
+        #expect(states == [.pending, .completed, .failed])
     }
 
-    func testCanSelectStringEnum() async throws {
+    @Test func canSelectStringEnum() async throws {
         enum State: String, Codable {
             case pending, completed, failed
         }
@@ -57,27 +55,24 @@ final class AsyncConnection_swiftTests: XCTestCase {
                 select state from cte
             """
         ).fetchAll()
-        XCTAssertEqual(states, [.pending, .completed, .failed])
+        #expect(states == [.pending, .completed, .failed])
     }
 
-    func testCantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() async throws {
+    @Test func cantDeserializePrimitiveWhenMoreThanOneColumnIsSelected() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let statement = try await db.prepare("select 1, 2")
-        try await assertThrows(statement: statement) {
-            (statement: consuming PreparedStatement) async throws in
-            _ = try await statement.fetchOne() as Int
+
+        await expectThrows(statement: statement) {
+            _ = try await $0.fetchOne() as Int
         }
     }
 
-    func testCanSelectAllKindsOfThings() async throws {
+    @Test func canSelectAllKindsOfThings() async throws {
         let db = try SharedConnection(filename: ":memory:")
         var stmt = try await db.prepare(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil")
         let row = try await stmt.step()!
-        XCTAssertEqual(
-            row,
-            specialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f])
-        )
+        #expect(row == specialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f]))
         try await stmt.finalize()
     }
 
@@ -100,38 +95,16 @@ final class AsyncConnection_swiftTests: XCTestCase {
         return db
     }
 
-    private func assertThrows(block: () async throws -> Void) async throws {
-        var error: (any Error)? = nil
-        do {
-            try await block()
-        } catch let e {
-            error = e
-        }
-        XCTAssertNotNil(error)
-    }
-    private func assertThrows(
-        statement: consuming PreparedStatement,
-        block: (consuming PreparedStatement) async throws -> Void
-    ) async throws {
-        var error: (any Error)? = nil
-        do {
-            try await block(statement)
-        } catch let e {
-            error = e
-        }
-        XCTAssertNotNil(error)
-    }
-
-    func testCanSelectManyRows() async throws {
+    @Test func canSelectManyRows() async throws {
         let db = try await prepareSampleDB()
         let rows = try await db.prepare("select * from test").fetchAll()
-        XCTAssertEqual(
-            rows,
-            [
+        #expect(
+            rows == [
                 specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]),
                 specialRow(i64: 2, f64: 2.0, string: "second", bytes: [0x02]),
                 specialRow(i64: 3, f64: 3.0, string: "third", bytes: [0x03]),
-            ])
+            ]
+        )
     }
 
     func specialRow(i64: Int64, f64: Double, string: String, bytes: [UInt8]) -> Row {
@@ -160,100 +133,101 @@ final class AsyncConnection_swiftTests: XCTestCase {
         }
     }
 
-    func testCanSelectDecodable() async throws {
+    @Test func canSelectDecodable() async throws {
         let db = try SharedConnection(filename: ":memory:")
         var stmt = try await db.prepare(
             "SELECT 1 as i64, 2.0 as f64, 'text' as string, unhex('42069f') as bytes, null as nil")
         let row: SpecialRow? = try await stmt.step()
-        XCTAssertEqual(
-            row,
-            SpecialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f])
-        )
+        #expect(row == SpecialRow(i64: 1, f64: 2.0, string: "text", bytes: [0x42, 0x06, 0x9f]))
         try await stmt.finalize()
     }
 
-    func testCanSelectManyDecodables() async throws {
+    @Test func canSelectManyDecodables() async throws {
         let db = try await prepareSampleDB()
         let rows: [SpecialRow] = try await db.prepare("select * from test").fetchAll()
-        XCTAssertEqual(
-            rows,
-            [
+        #expect(
+            rows == [
                 SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]),
                 SpecialRow(i64: 2, f64: 2.0, string: "second", bytes: [0x02]),
                 SpecialRow(i64: 3, f64: 3.0, string: "third", bytes: [0x03]),
-            ])
+            ]
+        )
     }
 
-    func testCanFetchExistingOptional() async throws {
+    @Test func canFetchExistingOptional() async throws {
         let db = try await prepareSampleDB()
         let row = try await db.prepare("select * from test").fetchOptional()
-        XCTAssertEqual(row, specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingOptional() async throws {
+    @Test func canFetchMissingOptional() async throws {
         let db = try await prepareSampleDB()
         let row = try await db.prepare("select * from test limit 0").fetchOptional()
-        XCTAssertEqual(row, nil)
+        #expect(row == nil)
     }
 
-    func testCanFetchExistingDecodableOptional() async throws {
+    @Test func canFetchExistingDecodableOptional() async throws {
         let db = try await prepareSampleDB()
         let row: SpecialRow? = try await db.prepare("select * from test").fetchOptional()
-        XCTAssertEqual(row, SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingDecodableOptional() async throws {
+    @Test func canFetchMissingDecodableOptional() async throws {
         let db = try await prepareSampleDB()
         let row: SpecialRow? = try await db.prepare("select * from test limit 0").fetchOptional()
-        XCTAssertEqual(row, nil)
+        #expect(row == nil)
     }
 
-    func testCanFetchExistingOne() async throws {
+    @Test func canFetchExistingOne() async throws {
         let db = try await prepareSampleDB()
         let row = try await db.prepare("select * from test").fetchOne()
-        XCTAssertEqual(row, specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == specialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingOne() async throws {
+    @Test func testCanFetchMissingOne() async throws {
         let db = try await prepareSampleDB()
         let statement = try await db.prepare("select * from test limit 0")
-        try await assertThrows(statement: statement) {
-            (statement: consuming PreparedStatement) async throws in
-            _ = try await statement.fetchOne()
+
+        await expectThrows(statement: statement) {
+            _ = try await $0.fetchOne()
         }
     }
 
-    func testCanFetchExistingDecodableOne() async throws {
+    @Test func canFetchExistingDecodableOne() async throws {
         let db = try await prepareSampleDB()
         let row: SpecialRow = try await db.prepare("select * from test").fetchOne()
-        XCTAssertEqual(row, SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
+        #expect(row == SpecialRow(i64: 1, f64: 1.0, string: "first", bytes: [0x01]))
     }
 
-    func testCanFetchMissingDecodableOne() async throws {
+    @Test func canFetchMissingDecodableOne() async throws {
         let db = try await prepareSampleDB()
         let statement = try await db.prepare("select * from test limit 0")
-        try await assertThrows(statement: statement) {
-            (statement: consuming PreparedStatement) async throws in
-            _ = try await statement.fetchOne() as SpecialRow
+        await expectThrows(statement: statement, "Shouldn't be able to fetchOne on zero rows") {
+            _ = try await $0.fetchOne() as SpecialRow
         }
     }
 
-    func testInsuffiecientlyBoundQueryDoesntExecute() async throws {
+    @Test func insuffiecientlyBoundQueryDoesntExecute() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
-        try await assertThrows {
+        await #expect(
+            throws: SQLiteError.self,
+            "Shouldn't be able to prepare query with insufficient bindings"
+        ) {
             _ = try await db.prepare("select ?")
         }
     }
 
-    func testOverboundQueryDoesntExecute() async throws {
+    @Test func overboundQueryDoesntExecute() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let query = BoundQuery(raw: "select 1", bindings: [.integer(5)])
-        try await assertThrows {
+        await #expect(
+            throws: SQLiteError.self, "Shouldn't be able to prepare query with too many bindings"
+        ) {
             _ = try await db.prepare(query)
         }
     }
 
-    func testBoundQueryProperlyRuns() async throws {
+    @Test func boundQueryProperlyRuns() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let res: SpecialRow = try await db.prepare(
             """
@@ -265,32 +239,29 @@ final class AsyncConnection_swiftTests: XCTestCase {
                 \(SQLNull()) as nil
             """
         ).fetchOne()
-        XCTAssertEqual(res, SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
+        #expect(res == SpecialRow(i64: 42, f64: 2.0, string: "text", bytes: [0x42, 0x69]))
     }
 
-    func testCanInterpolateFragment() async throws {
+    @Test func canInterpolateFragment() async throws {
         let db = try await prepareSampleDB()
         let whereClause: BoundQuery = "where f64 > \(1.0)"
         let res: [Int] = try await db.prepare(
             "select i64 from test \(fragment: whereClause) limit \(1)"
         ).fetchAll()
-        XCTAssertEqual(res, [2])
+        #expect(res == [2])
     }
 
-    func runReturnsCorrectRowid() async throws {
+    @Test func runReturnsCorrectRowid() async throws {
         let db = try await prepareSampleDB()
         let insertionStats = try await db.prepare(
             "insert into test values (42, 6.9, 'text', unhex('0x4269'), null)"
         ).run()
         let lastId: Int64 = try await db.prepare("select max(rowid) from test").fetchOne()
-        XCTAssertEqual(
-            insertionStats,
-            InsertionStats(
-                lastInsertedRowid: lastId, rowsAffected: 1, totalRowsAffected: 1
-            ))
+        #expect(insertionStats.lastInsertedRowid == lastId)
+        #expect(insertionStats.rowsAffected == 1)
     }
 
-    func testRealWorldUse1() async throws {
+    @Test func realWorldUse1() async throws {
         let input = [
             "Aaran", "Aaren", "Aarez", "Aarman", "Aaron", "Aaron-James", "Aarron", "Aaryan",
             "Aaryn", "Aayan", "Aazaan", "Abaan", "Abbas", "Abdallah", "Abdalroof", "Abdihakim",
@@ -328,10 +299,10 @@ final class AsyncConnection_swiftTests: XCTestCase {
 
         let res: [MyResponse] = try await db.prepare("select first_name as usernames from users")
             .fetchAll()
-        XCTAssertEqual(res, input.map { MyResponse(usernames: $0) })
+        #expect(res == input.map { MyResponse(usernames: $0) })
     }
 
-    func testWillDecodeDates() async throws {
+    @Test func willDecodeDates() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
 
         struct DateRow: Equatable, Codable {
@@ -351,19 +322,19 @@ final class AsyncConnection_swiftTests: XCTestCase {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions.insert(.withFractionalSeconds)
 
-        XCTAssertEqual(
-            row,
-            DateRow(
-                epochSeconds: Date(timeIntervalSince1970: 1_716_041_456),
-                epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
-                iso8601: formatter.date(from: "2024-05-18T14:11:35.069Z")!
-            ))
+        #expect(
+            row
+                == DateRow(
+                    epochSeconds: Date(timeIntervalSince1970: 1_716_041_456),
+                    epochPreciseSeconds: Date(timeIntervalSince1970: 1716041456.069),
+                    iso8601: formatter.date(from: "2024-05-18T14:11:35.069Z")!
+                ))
     }
 
     // SQLite's `datetime` functions will return iso8601 strings without "Z" time zone.
     // Swift's Date parsing, understandably, doesn't like dates that don't end on "Z" or "±HH:MM".
     // My driver has to handle these cases
-    func testWillSQLiteDates() async throws {
+    @Test func willSQLiteDates() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let date: Date = try await db.prepare(
             "select datetime('2024-02-03 08:12:23.032Z', 'subsec')"
@@ -373,20 +344,20 @@ final class AsyncConnection_swiftTests: XCTestCase {
         formatter.formatOptions.insert(.withFractionalSeconds)
         formatter.timeZone = TimeZone(identifier: "UTC")!
 
-        XCTAssertEqual(date, formatter.date(from: "2024-02-03T08:12:23.032Z"))
+        #expect(date == formatter.date(from: "2024-02-03T08:12:23.032Z")!)
     }
 
-    func testFetchOneParameterPackDecode() async throws {
+    @Test func fetchOneParameterPackDecode() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let (i64, f64, string, blob, _): (Int, Double, String, SQLiteBlob, SQLNull) =
             try await db.prepare("SELECT 1, 2.0, 'text', unhex('42069f'), null").fetchOne()
-        XCTAssertEqual(i64, 1)
-        XCTAssertEqual(f64, 2.0)
-        XCTAssertEqual(string, "text")
-        XCTAssertEqual(blob, SQLiteBlob.loaded(Data([0x42, 0x06, 0x9f])))
+        #expect(i64 == 1)
+        #expect(f64 == 2.0)
+        #expect(string == "text")
+        #expect(blob == SQLiteBlob.loaded(Data([0x42, 0x06, 0x9f])))
     }
 
-    func testFetchAllParameterPackDecode() async throws {
+    @Test func fetchAllParameterPackDecode() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let rows: [(Int, String?)] = try await db.prepare(
             """
@@ -394,13 +365,12 @@ final class AsyncConnection_swiftTests: XCTestCase {
             select number, string from cte
             """
         ).fetchAll()
-        XCTAssertEqual(rows[0].0, 1)
-        XCTAssertEqual(rows[0].1, "hello")
-        XCTAssertEqual(rows[1].0, 2)
-        XCTAssertEqual(rows[1].1, nil)
+        #expect(rows.count == 2)
+        #expect(rows[0] == (1, "hello"))
+        #expect(rows[1] == (2, nil))
     }
 
-    func testFetchOptionalParameterPackDecode() async throws {
+    @Test func fetchOptionalParameterPackDecode() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let value: (Int, String?)? = try await db.prepare(
             """
@@ -408,12 +378,10 @@ final class AsyncConnection_swiftTests: XCTestCase {
             select number, string from cte
             """
         ).fetchOptional()
-        XCTAssertNotNil(value)
-        XCTAssertEqual(value?.0, 1)
-        XCTAssertEqual(value?.1, "hello")
+        #expect(try #require(value) == (1, "hello"))
     }
 
-    func testStepParameterPackDecode() async throws {
+    @Test func stepParameterPackDecode() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var statement = try await db.prepare(
             """
@@ -422,37 +390,48 @@ final class AsyncConnection_swiftTests: XCTestCase {
             """)
         let value: (Int, String?)? = try await statement.step()
         try await statement.finalize()
-        XCTAssertNotNil(value)
-        XCTAssertEqual(value?.0, 1)
-        XCTAssertEqual(value?.1, "hello")
+        #expect(try #require(value) == (1, "hello"))
     }
 
-    func compileTestFetchOneIsNotAmbigious() async throws {
+    @Test func compileTestFetchOneIsNotAmbigious() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let _: Int = try await db.prepare("select 1").fetchOne()
     }
 
-    func compileTestFetchOptionalIsNotAmbigious() async throws {
+    @Test func compileTestFetchOptionalIsNotAmbigious() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let _: Int? = try await db.prepare("select 1").fetchOptional()
     }
 
-    func compileTestStepIsNotAmbigious() async throws {
+    @Test func compileTestStepIsNotAmbigious() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         var statement = try await db.prepare("select 1")
         let _: Int? = try await statement.step()
         try await statement.finalize()
     }
 
-    func testBoolsAreDecodedAsTheyShould() async throws {
+    @Test func boolsAreDecodedAsTheyShould() async throws {
         let db = try SharedConnection(filename: ":memory:", mode: .readOnly)
         let oneTrue: Bool = try await db.prepare("select 1").fetchOne()
-        XCTAssertTrue(oneTrue)
+        #expect(oneTrue)
         let oneFalse: Bool = try await db.prepare("select 0").fetchOne()
-        XCTAssertFalse(oneFalse)
+        #expect(!oneFalse)
         let inTuple: (Bool, Bool, Bool) = try await db.prepare("select 0, 1, 69").fetchOne()
-        XCTAssertFalse(inTuple.0)
-        XCTAssertTrue(inTuple.1)
-        XCTAssertTrue(inTuple.2)
+        #expect(!inTuple.0)
+        #expect(inTuple.1)
+        #expect(inTuple.2)
+    }
+
+    func expectThrows(
+        statement: consuming PreparedStatement,
+        _ comment: Comment? = nil,
+        _ block: (consuming PreparedStatement) async throws -> Void
+    ) async {
+        do {
+            try await block(statement)
+            #expect(Bool(false), "Should throw on invalid statement")
+        } catch {
+            // Hurray, it threw as expected!
+        }
     }
 }
