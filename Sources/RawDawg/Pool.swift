@@ -1,14 +1,5 @@
 import Collections
 
-/// PLEASE BE CAREFUL WITH THIS GUY
-private struct UnsafeSendableUnmanagedSyncConnection: @unchecked Sendable {
-    let conn: UnmanagedSyncConnection
-
-    init(_ conn: UnmanagedSyncConnection) {
-        self.conn = conn
-    }
-}
-
 /// The pool of ``SyncConnection``s. 
 ///
 /// Use this type when the concurrenct access to the database is desired.
@@ -38,7 +29,7 @@ public actor Pool {
     // This should be a FIFO queue probably. Just to be fair to all continuations.
     // Also this could be a unchecked continuation, but let's just be safe.
     private var parkedContinuations:
-        Deque<CheckedContinuation<UnsafeSendableUnmanagedSyncConnection, Never>> = []
+        Deque<CheckedContinuation<UnmanagedSyncConnection, Never>> = []
     private var currentPoolSize: Int = 0
 
     public let connectionString: String
@@ -65,34 +56,33 @@ public actor Pool {
     /// Borrow one of the ``SyncConnection``s for the duration of the call.
     ///
     /// New connections are created on-demand, up until ``maxPoolSize``. After that, access is queued.
-    public nonisolated func acquire<T>(block: (inout SyncConnection) async throws -> T) async throws
+    public nonisolated func acquire<T>(block: (inout SyncConnection) async throws -> sending T) async throws
         -> T
     {
         // SAFETY: We don't share the underlying connection. It is "moved" to the callee.
         let unmanagedConn = try await acquireUnmanaged()
-        var conn = SyncConnection(unsafeFromUnmanaged: unmanagedConn.conn)
+        var conn = SyncConnection(unsafeFromUnmanaged: unmanagedConn)
         // async defer when??
         do {
             let result = try await block(&conn)
             // SAFETY: We don't share the underlying connection. It is "moved" to the caller.
-            await release(
-                connection: UnsafeSendableUnmanagedSyncConnection(conn.unsafeReleaseUnmanaged()))
+            await release(connection: conn.unsafeReleaseUnmanaged())
             return result
         } catch {
             // SAFETY: We don't share the underlying connection. It is "moved" to the caller.
-            await release(
-                connection: UnsafeSendableUnmanagedSyncConnection(conn.unsafeReleaseUnmanaged()))
+            await release(connection: conn.unsafeReleaseUnmanaged())
             throw error
         }
     }
 
-    private func acquireUnmanaged() async throws -> UnsafeSendableUnmanagedSyncConnection {
+    private func acquireUnmanaged() async throws -> sending UnmanagedSyncConnection {
         assert(currentPoolSize <= maxPoolSize)
         assert(freeConnections.count <= currentPoolSize)
 
-        if let unmanagedConn = freeConnections.popLast() {
+        if let unmanagedConn = freeConnections.popLastSending() {
             // SAFETY: We don't share the underlying connection. It is "moved" to the callee.
-            return UnsafeSendableUnmanagedSyncConnection(unmanagedConn)
+            // Call me back when Array.popLast() is -> sending T?
+            return unmanagedConn
         } else if currentPoolSize < maxPoolSize {
             log.trace(
                 "Creating a new connection to \(connectionString)",
@@ -103,17 +93,17 @@ public actor Pool {
             )
             currentPoolSize += 1
             // SAFETY: We don't share the underlying connection. It is "moved" to the callee.
-            return try UnsafeSendableUnmanagedSyncConnection(
-                UnmanagedSyncConnection(filename: connectionString, mode: mode))
+            return try UnmanagedSyncConnection(filename: connectionString, mode: mode)
         } else {
-            return await withCheckedContinuation {
-                (continuation: CheckedContinuation<UnsafeSendableUnmanagedSyncConnection, Never>) in
+            let freeConn = await withCheckedContinuation {
+                (continuation: CheckedContinuation<UnmanagedSyncConnection, Never>) in
                 parkedContinuations.append(continuation)
             }
+            return freeConn
         }
     }
 
-    private func release(connection: /* sending */ UnsafeSendableUnmanagedSyncConnection) {
+    private func release(connection: sending UnmanagedSyncConnection) {
         assert(currentPoolSize <= maxPoolSize)
         assert(freeConnections.count < currentPoolSize)
 
@@ -121,7 +111,7 @@ public actor Pool {
             // SAFETY: We don't share the underlying connection. It is "moved" into the continuation.
             continuation.resume(returning: connection)
         } else {
-            freeConnections.append(connection.conn)
+            freeConnections.append(connection)
         }
     }
     
@@ -138,5 +128,16 @@ public actor Pool {
         if !errors.isEmpty {
             log.error("Failed to close some connections", metadata: ["errors": "\(errors)"])
         }
+    }
+}
+
+private extension Array {
+    private struct UnsafeSmuggleSendable: @unchecked Sendable {
+        let unsafeValue: Element?
+    }
+
+    mutating func popLastSending() -> sending Element? {
+        // SAFETY: It is safe to mark the return value as `sending` since it is no longer present in the array.
+        return UnsafeSmuggleSendable(unsafeValue: self.popLast()).unsafeValue
     }
 }
