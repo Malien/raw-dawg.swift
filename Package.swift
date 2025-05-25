@@ -24,7 +24,7 @@ let package = Package(
         .package(
             url: "https://github.com/apple/swift-algorithms.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "https://github.com/sbooth/CSQLite.git", from: "3.45.3"),
-        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.4.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.1.0"),
     ],
     targets: [
