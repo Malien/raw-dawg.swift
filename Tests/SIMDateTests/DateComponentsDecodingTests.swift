@@ -9,7 +9,7 @@ import Testing
 #endif
 
 /// `DateComponents(decodingISO8601:)` under default options:
-/// `components: .acceptBareDate`, `datetimeSeparator: [.t, .T, .space]`,
+/// `components: .acceptBareDate` (any of `T`, `t`, space between date and time),
 /// `dateComponents: .separatedByDashWithLeadingZeros`, `timeComponents: .separatedByColonWithLeadingZeros`,
 /// `decimalSeparator: .dot`, `timezone: .any`.
 @Suite("DateComponents decoding")

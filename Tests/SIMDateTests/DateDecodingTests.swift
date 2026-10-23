@@ -228,3 +228,22 @@ struct DateTimeZoneOptionTests {
     func anyOffset(_ c: DateCase) { c.check() }
 
 }
+
+/// `ComponentsOption.datetime(separator:range:)` on `Date`; the full matrix lives in `DateComponentsDateTimeSeparatorTests`
+@Suite("Date decoding: datetime separator")
+struct DateDateTimeSeparatorTests {
+
+    @Test("The separator set is respected", arguments: [
+        DateCase("2020-02-02T08:00:34Z", components: .datetime(separator: [.T], range: .hour ... .subsecond(precision: .arbitrary)), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase(reject: "2020-02-02t08:00:34Z", components: .datetime(separator: [.T], range: .hour ... .subsecond(precision: .arbitrary))),
+        DateCase(reject: "2020-02-02 08:00:34Z", components: .datetime(separator: [.T], range: .hour ... .subsecond(precision: .arbitrary))),
+        DateCase("2020-02-02 08:00:34+05:30", components: .datetime(separator: [.space], range: .hour ... .subsecond(precision: .arbitrary)), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase(reject: "2020-02-02T08:00:34+05:30", components: .datetime(separator: [.space], range: .hour ... .subsecond(precision: .arbitrary))),
+        DateCase("2020-02-02t12Z", components: .datetime(separator: [.t, .T], range: .hour ... .subsecond(precision: .arbitrary)), expect: at(2020, 2, 2, 12)),
+        DateCase(reject: "2020-02-02t12Z", components: .datetime(separator: [.t, .space], range: .hour ... .subsecond(precision: .arbitrary))),
+        DateCase(reject: "2020-02-02T12Z", components: .datetime(separator: [.t, .space], range: .hour ... .subsecond(precision: .arbitrary))),
+        DateCase("2020-02-02 08:00:34", components: .datetime(separator: [.space], range: .hour ... .subsecond(precision: .arbitrary)), timezone: .requireOmitted(impose: east(2)), expect: at(2020, 2, 2, 8, 0, 34, offset: east(2))),
+        DateCase(reject: "2020-02-02T08:00:34", components: .datetime(separator: [.space], range: .hour ... .subsecond(precision: .arbitrary)), timezone: .requireOmitted(impose: east(2))),
+    ])
+    func separators(_ c: DateCase) { c.check() }
+}

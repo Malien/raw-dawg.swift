@@ -15,20 +15,23 @@ struct DateComponentsOptionTests {
 
     @Test("components: precision ranges", arguments: [
         // Fields above the range's upper bound are nil
-        DCCase("2020-02-02T12", components: .hour ... .minute, expect: DateComponents(year: 2020, month: 2, day: 2, hour: 12, minute: 0)),
+        DCCase("2020-02-02T12", components: .datetime(range: .hour ... .minute), expect: DateComponents(year: 2020, month: 2, day: 2, hour: 12, minute: 0)),
         DCCase("2020-02-02", components: .dateOnly, expect: DateComponents(year: 2020, month: 2, day: 2)),
         DCCase(reject: "2020-02-02T12", components: .dateOnly),
+        // no separator admits no time part: the same as `.dateOnly`
+        DCCase("2020-02-02", components: .datetime(separator: [], range: .hour ... .subsecond(precision: .arbitrary)), expect: DateComponents(year: 2020, month: 2, day: 2)),
+        DCCase(reject: "2020-02-02T12", components: .datetime(separator: [], range: .hour ... .subsecond(precision: .arbitrary))),
         DCCase(reject: "2020-02-02", components: .datetimeOnly),
         DCCase("2020-02-02T12", components: .datetimeOnly, expect: DateComponents(year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
         // Subsecond bounds are exact digit counts
         DCCase(
-            "2020-02-02T08:00:34.123", components: .subsecond(precision: .millis) ... .subsecond(precision: .millis),
+            "2020-02-02T08:00:34.123", components: .datetime(range: .subsecond(precision: .millis) ... .subsecond(precision: .millis)),
             expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 123_000_000)
         ),
-        DCCase(reject: "2020-02-02T08:00:34.12", components: .subsecond(precision: .millis) ... .subsecond(precision: .millis)),
-        DCCase(reject: "2020-02-02T08:00:34.1234", components: .subsecond(precision: .millis) ... .subsecond(precision: .millis)),
-        DCCase(reject: "2020-02-02T08:00:34", components: .subsecond(precision: .millis) ... .subsecond(precision: .millis)),
-        DCCase(reject: "2020-02-02T08:00:34.1234", components: .date ... .subsecond(precision: .millis)),
+        DCCase(reject: "2020-02-02T08:00:34.12", components: .datetime(range: .subsecond(precision: .millis) ... .subsecond(precision: .millis))),
+        DCCase(reject: "2020-02-02T08:00:34.1234", components: .datetime(range: .subsecond(precision: .millis) ... .subsecond(precision: .millis))),
+        DCCase(reject: "2020-02-02T08:00:34", components: .datetime(range: .subsecond(precision: .millis) ... .subsecond(precision: .millis))),
+        DCCase(reject: "2020-02-02T08:00:34.1234", components: .datetime(range: .date ... .subsecond(precision: .millis))),
     ])
     func components(_ c: DCCase) { c.check() }
 

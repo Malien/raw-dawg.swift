@@ -16,9 +16,8 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
     let expected: DateComponents?
     /// Mirrors the parameters of `DateComponents(decodingISO8601:...)`.
     /// Defaults must match the ones documented in `Sources/SIMDate.swift`.
-    /// `timezone` is already live; everything else is still commented out in the source.
-    let components: ClosedRange<ComponentPrecision>
-    let datetimeSeparator: DateTimeSeparator
+    /// `components` and `timezone` are already live; everything else is still commented out in the source.
+    let components: ComponentsOption
     let dateComponents: DateComponentEncoding
     let timeComponents: TimeComponentEncoding
     let decimalSeparator: DecimalSeparator
@@ -35,8 +34,7 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
 
     init(
         _ input: String,
-        components: ClosedRange<ComponentPrecision> = .acceptBareDate,
-        datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .acceptBareDate,
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
@@ -47,7 +45,6 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.input = input
         self.expected = expected
         self.components = components
-        self.datetimeSeparator = datetimeSeparator
         self.dateComponents = dateComponents
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
@@ -57,8 +54,7 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
 
     init(
         reject input: String,
-        components: ClosedRange<ComponentPrecision> = .acceptBareDate,
-        datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .acceptBareDate,
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
@@ -68,7 +64,6 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.input = input
         self.expected = nil
         self.components = components
-        self.datetimeSeparator = datetimeSeparator
         self.dateComponents = dateComponents
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
@@ -79,9 +74,7 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
     func check() {
         let defaults = Self(reject: input)
         let isDefaulted =
-            components == defaults.components
-            && datetimeSeparator == defaults.datetimeSeparator
-            && dateComponents == defaults.dateComponents
+            dateComponents == defaults.dateComponents
             && timeComponents == defaults.timeComponents
             && decimalSeparator == defaults.decimalSeparator
         if !isDefaulted {
@@ -90,7 +83,8 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
                 sourceLocation: sourceLocation)
         }
         // TODO(options): forward the remaining options once the parameters land
-        let actual = DateComponents(decodingISO8601: input, timezone: timezone)
+        let actual = DateComponents(
+            decodingISO8601: input, components: components, timezone: timezone)
         guard let expected else {
             #expect(
                 actual == nil,
@@ -170,9 +164,8 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
     /// `nil` means the input must be rejected
     let expected: Date?
     /// Mirrors the parameters of `Date(decodingISO8601:...)`.
-    /// `timezone` is already live; everything else is still commented out in the source.
-    let components: ClosedRange<ComponentPrecision>
-    let datetimeSeparator: DateTimeSeparator
+    /// `components` and `timezone` are already live; everything else is still commented out in the source.
+    let components: ComponentsOption
     let dateComponents: DateComponentEncoding
     let timeComponents: TimeComponentEncoding
     let decimalSeparator: DecimalSeparator
@@ -192,8 +185,7 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
 
     init(
         _ input: String,
-        components: ClosedRange<ComponentPrecision> = .datetimeOnly,
-        datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .datetimeOnly,
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
@@ -204,7 +196,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.input = input
         self.expected = expected
         self.components = components
-        self.datetimeSeparator = datetimeSeparator
         self.dateComponents = dateComponents
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
@@ -214,8 +205,7 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
 
     init(
         reject input: String,
-        components: ClosedRange<ComponentPrecision> = .datetimeOnly,
-        datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .datetimeOnly,
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
@@ -225,7 +215,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.input = input
         self.expected = nil
         self.components = components
-        self.datetimeSeparator = datetimeSeparator
         self.dateComponents = dateComponents
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
@@ -236,9 +225,7 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
     func check() {
         let defaults = Self(reject: input)
         let isDefaulted =
-            components == defaults.components
-            && datetimeSeparator == defaults.datetimeSeparator
-            && dateComponents == defaults.dateComponents
+            dateComponents == defaults.dateComponents
             && timeComponents == defaults.timeComponents
             && decimalSeparator == defaults.decimalSeparator
         if !isDefaulted {
@@ -246,7 +233,8 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
                 "Date options are not wired into the decoder yet", sourceLocation: sourceLocation)
         }
         // TODO(options): forward the remaining options once the parameters land
-        let actual = Date(decodingISO8601: input, timezone: timezone)
+        let actual = Date(
+            decodingISO8601: input, components: components, timezone: timezone)
         guard let expected else {
             #expect(
                 actual == nil,

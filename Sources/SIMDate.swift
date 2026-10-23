@@ -32,36 +32,53 @@ public enum ComponentPrecision: Sendable, Comparable {
     }
 }
 
-extension ClosedRange where Bound == ComponentPrecision {
-    /// Will reject any bare date string without time components
-    /// - Examples:
-    ///   - "2020-02" rejected
-    ///   - "2020-02-02" rejected
-    ///   - "2020-02-02T12" accepted
-    ///   - "2020-02-02T08:00:34" accepted
-    public static let datetimeOnly: Self = .hour ... .subsecond(precision: .arbitrary)
+/// Which components a string may contain, and what joins the date to the time.
+public struct ComponentsOption: Sendable {
+    /// Characters accepted between the date and the time. `[]` admits no time part.
+    @usableFromInline
+    internal let separator: DateTimeSeparator
+    /// Precision range of the components. `range.lowerBound == .date` makes the time part optional.
+    @usableFromInline
+    internal let range: ClosedRange<ComponentPrecision>
+
+    @usableFromInline
+    internal init(separator: DateTimeSeparator, range: ClosedRange<ComponentPrecision>) {
+        self.separator = separator
+        self.range = range
+    }
+
+    /// A date, optionally followed by a time joined with any of `separator`.
+    /// `separator: []` or `range: .date ... .date` admit no time part, and are the same as `.dateOnly`.
+    @export(implementation)
+    public static func datetime(
+        separator: DateTimeSeparator = [.t, .T, .space],
+        range: ClosedRange<ComponentPrecision>
+    ) -> Self {
+        if separator == [] || separator == .t || range.upperBound == .date { return .dateOnly }
+        return Self(separator: separator, range: range)
+    }
+
     /// Will only accept bare date strings. Any time component will be considered invalid
     /// - Examples:
     ///   - "2020-02" rejected
     ///   - "2020-02-02" accepted
     ///   - "2020-02-02T12" rejected
     ///   - "2020-02-02T08:00:34" rejected
-    public static let dateOnly: Self = .date ... .date
+    public static let dateOnly = Self(separator: [], range: .date ... .date)
+    /// Will reject any bare date string without time components
+    /// - Examples:
+    ///   - "2020-02" rejected
+    ///   - "2020-02-02" rejected
+    ///   - "2020-02-02T12" accepted
+    ///   - "2020-02-02T08:00:34" accepted
+    public static let datetimeOnly = datetime(range: .hour ... .subsecond(precision: .arbitrary))
     /// Will accept any date or datetime string.
     /// - Examples:
     ///   - "2020-02" rejected
     ///   - "2020-02-02" accepted
     ///   - "2020-02-02T12" accepted
     ///   - "2020-02-02T08:00:34" accepted
-    public static let acceptBareDate: Self = .date ... .subsecond(precision: .arbitrary)
-}
-
-public enum DateComponentSeparators: Sendable {
-    case requireDash, requireOmitted, acceptAny
-}
-
-public enum TimeComponentSeparators: Sendable {
-    case requireColon, requireOmitted, acceptAny
+    public static let acceptBareDate = datetime(range: .date ... .subsecond(precision: .arbitrary))
 }
 
 public struct DateTimeSeparator: Sendable, OptionSet {
@@ -73,19 +90,6 @@ public struct DateTimeSeparator: Sendable, OptionSet {
     public static let t = DateTimeSeparator(rawValue: 1 << 0)
     public static let T = DateTimeSeparator(rawValue: 1 << 1)
     public static let space = DateTimeSeparator(rawValue: 1 << 2)
-}
-
-public enum ZuluOffset: Sendable {
-    case accept, acceptCaseSensitive, reject
-}
-
-public enum NumericOffset: Sendable {
-    case accept(resolution: ClosedRange<Resolution>)
-    case reject
-
-    public enum Resolution: Sendable, Comparable {
-        case hour, minute, second
-    }
 }
 
 public enum DateComponentEncoding: Sendable {
@@ -139,7 +143,8 @@ public struct TimeZoneComponents: Sendable, OptionSet {
     public static let anyNumeric: Self = [.hh, .hhmm, .hhmmss, .`hh:mm`, .`hh:mm:ss`]
     public static let any: Self = [.z, .Z, .anyNumeric]
 
-    // non-compliant foundation-like behaviour
+    // non-compliant foundation-like behaviour.
+    // No longer fits UInt8, unless we collapse these cases as modifiers of previous 5
     // public static let h = Self(rawValue: 1 << 7)
     // public static let hhm = Self(rawValue: 1 << 8)
     // public static let hhmms = Self(rawValue: 1 << 9)
@@ -151,18 +156,12 @@ extension DateComponents {
     @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
-        // components: ClosedRange<ComponentPrecision> = .acceptBareDate,
-        // datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .acceptBareDate,
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
         timezone: TimeZoneComponents = .any,
     ) {
-        // assert(
-        //     datetimeSeparator != [],
-        //     "Empty `datetimeSeparator:` parameter will result in always-failing parsing"
-        // )
-
         guard span.count >= 10 else { return nil }
 
         let datetime: Span<UInt8>
@@ -195,15 +194,151 @@ extension DateComponents {
             }
         }
 
-        let lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-        let hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+        let lo: SIMD32<UInt8>
+        let hi: SIMD32<UInt8>
+        var buffer: SIMD32<UInt8>
+        // switch components.separator {
+        // case [], [.t]: preconditionFailure("TODO")
+        //
+        // case [.T]:
+        //     lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //
+        // case [.space], [.space, .t]:
+        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //
+        // case [.T, .t]:
+        //     lo = SIMD32(constant: "0000-00-00t00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39t29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //     buffer[10] |= 0x20
+        //
+        // case [.space, .T]:
+        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //     if buffer[10] == c("T") {
+        //         buffer[10] = c(" ")
+        //     }
+        //
+        // case [.space, .t, .T]:
+        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //     if (buffer[10] | 0x20) == c("t") {
+        //         buffer[10] = c(" ")
+        //     }
+        //
+        // default: assertionFailure("components.separator contains an invalid bitpattern")
+        // }
 
-        var buffer = lo
-        memcpy(datetime, intoSIMD: &buffer)
+        // switch components.separator {
+        // case [], [.t]: preconditionFailure("TODO")
+        //
+        // case [.T], [.T, .t]:
+        //     lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //     if components.separator.contains(.t) {
+        //         buffer[10] &= ~0x20
+        //     }
+        //
+        // case [.space], [.space, .t], [.space, .T], [.space, .T, .t]:
+        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+        //     buffer = lo
+        //     memcpy(datetime, intoSIMD: &buffer)
+        //
+        //     var actualSeparator = buffer[10]
+        //     if components.separator.contains(.t) {
+        //         actualSeparator &= ~0x20
+        //     }
+        //     if components.separator.contains(.T) && actualSeparator == c("T") {
+        //         buffer[10] = c(" ")
+        //     }
+        //
+        // default: assertionFailure("components.separator contains an invalid bitpattern")
+        // }
 
-        if (buffer[10] | 0x20) == c("t") {
-            buffer[10] = c(" ")
+        if components.separator.contains(.space) || datetime.count == 10 {
+            lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+            hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
+            buffer = lo
+            memcpy(datetime, intoSIMD: &buffer)
+
+            var actualSeparator = buffer[10]
+            if components.separator.contains(.t) {
+                actualSeparator &= ~0x20
+            }
+            if components.separator.contains(.T) && actualSeparator == c("T") {
+                buffer[10] = c(" ")
+            }
+        } else if components.separator.contains(.T) {
+            lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
+            hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
+            buffer = lo
+            memcpy(datetime, intoSIMD: &buffer)
+            if components.separator.contains(.t) {
+                buffer[10] &= ~0x20
+            }
+        } else {
+            // assertionFailure(
+            //     """
+            //     components.separator of [] or [.t] should've been handled uptop in the bare-date 
+            //     case, since this bitpattern of TimeZoneOption(separator: [], range: range) where 
+            //     range != .date ... .date, should be illegal
+            //     """
+            // )
+            return nil
         }
+
+        // T       01010100
+        // t       01110100
+        // <space> 00100000
+        // 0x20    00100000
+
+        // if (buffer[10] | 0x20) == c("t") {
+        //     buffer[10] = c(" ")
+        // }
+
+        // if buffer[10] == c(" ") {
+        //     buffer[10] = c("T")
+        // } else {
+        //     buffer[10] &= ~0x20
+        // }
+
+        // read -> or -> branch -> write
+
+        //   lda r1 (buffer[10])
+        //   or r1 0x20
+        //   test 't'
+        //   jne skip
+        //   str (buffer[10]) ' '
+        // skip:
+        //   ...rest
+
+        // read -> branch -> write
+        //                -> and -> write
+
+        //   lda r1 (buffer[10])
+        //   test ' '
+        //   jne not_space
+        //   str (buffer[10]) 'T'
+        //   jmp rest
+        // not_space:
+        //   and r1 (~0x20)
+        //   str (buffer[10]) r1
+        // rest:
+        //   ...rest
 
         guard lanewise(buffer, liesBetween: lo, and: hi) else { return nil }
 
@@ -267,8 +402,7 @@ extension DateComponents {
     @export(implementation)
     public init?(
         decodingISO8601 string: String,
-        // components: ClosedRange<ComponentPrecision> = .acceptBareDate,
-        // datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .acceptBareDate,
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
@@ -277,8 +411,7 @@ extension DateComponents {
         let date = string.withUTF8Span {
             Self.init(
                 decodingISO8601: $0,
-                // components: components,
-                // datetimeSeparator: datetimeSeparator,
+                components: components,
                 // dateComponents: dateComponents,
                 // timeComponents: timeComponents,
                 // decimalSeparator: decimalSeparator,
@@ -546,8 +679,7 @@ extension Date {
     // @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
-        // components: ClosedRange<ComponentPrecision> = .datetimeOnly,
-        // datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .datetimeOnly,
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
@@ -556,8 +688,7 @@ extension Date {
         guard
             var components = DateComponents(
                 decodingISO8601: span,
-                // components: components,
-                // datetimeSeparator: datetimeSeparator,
+                components: components,
                 // dateComponents: dateComponents,
                 // timeComponents: timeComponents,
                 // decimalSeparator: decimalSeparator,
@@ -580,8 +711,7 @@ extension Date {
     @export(implementation)
     public init?(
         decodingISO8601 string: String,
-        // components: ClosedRange<ComponentPrecision> = .datetimeOnly,
-        // datetimeSeparator: DateTimeSeparator = [.t, .T, .space],
+        components: ComponentsOption = .datetimeOnly,
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
@@ -590,8 +720,7 @@ extension Date {
         let date = string.withUTF8Span {
             Self.init(
                 decodingISO8601: $0,
-                // components: components,
-                // datetimeSeparator: datetimeSeparator,
+                components: components,
                 // dateComponents: dateComponents,
                 // timeComponents: timeComponents,
                 // decimalSeparator: decimalSeparator,
