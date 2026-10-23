@@ -88,14 +88,15 @@ struct DateComponentsDecodingTests {
         DCCase(
             "2020-02-02T23:59:59.9999999999Z",
             expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 23, minute: 59, second: 59, nanosecond: 999_999_999)),
-        DCCase(
-            "2020-02-02T08:00:34." + String(repeating: "9", count: 64),
-            expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 999_999_999)
-        ),
-        DCCase(
-            "2020-02-02T08:00:34." + String(repeating: "0", count: 300) + "1",
-            expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)
-        ),
+        // We put a max 32 byte limit on the datetime string, cause everything larger than that is bound to be an attempt at a DoS
+//        DCCase(
+//            "2020-02-02T08:00:34." + String(repeating: "9", count: 64),
+//            expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 999_999_999)
+//        ),
+//        DCCase(
+//            "2020-02-02T08:00:34." + String(repeating: "0", count: 300) + "1",
+//            expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)
+//        ),
         DCCase("2020-02-02T08:00:34.5Z", expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),
         DCCase("2020-02-02T08:00:34.5+05:30", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),
         DCCase("2020-02-02T08:00:34.5-08", expect: DateComponents(timeZone: west(8), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),

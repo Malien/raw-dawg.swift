@@ -10,7 +10,7 @@ import Testing
 
 // MARK: - DateComponents cases
 
-struct DCCase: Sendable, CustomTestStringConvertible {
+struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
     let input: String
     /// `nil` means the input must be rejected
     let expected: DateComponents?
@@ -24,6 +24,10 @@ struct DCCase: Sendable, CustomTestStringConvertible {
     let timezone: TimeZoneComponents
     let offsetComponents: TimeComponentEncoding
     let sourceLocation: SourceLocation
+
+    /// Lets Xcode and `swift test` re-run a single case. Inputs repeat across cases
+    /// with different options, so the declaring line disambiguates.
+    var id: String { "\(input) @L\(sourceLocation.line)" }
 
     var testDescription: String {
         "\(input.debugDescription) → \(expected.map(Fields.init).map(String.init(describing:)) ?? "reject")"
@@ -167,7 +171,7 @@ func at(
     return components.date!
 }
 
-struct DateCase: Sendable, CustomTestStringConvertible {
+struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
     let input: String
     /// `nil` means the input must be rejected
     let expected: Date?
@@ -184,6 +188,10 @@ struct DateCase: Sendable, CustomTestStringConvertible {
 
     /// Date is Double-backed; fractional seconds compare within 1µs
     static let tolerance = 1e-6
+
+    /// Lets Xcode and `swift test` re-run a single case. Inputs repeat across cases
+    /// with different options, so the declaring line disambiguates.
+    var id: String { "\(input) @L\(sourceLocation.line)" }
 
     var testDescription: String {
         "\(input.debugDescription) → \(expected.map { "\($0.timeIntervalSince1970)s since 1970" } ?? "reject")"

@@ -3,6 +3,20 @@
 
 import PackageDescription
 
+/// Opt into every upcoming feature that is not yet on by default in Swift 6 mode,
+/// plus strict memory safety, lifetime annotations, and warnings-as-errors.
+let swiftSettings: [SwiftSetting] = [
+    // Upcoming features scheduled for Swift 7
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("InternalImportsByDefault"),
+    .enableUpcomingFeature("MemberImportVisibility"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("ImmutableWeakCaptures"),
+    .strictMemorySafety(),
+    .treatAllWarnings(as: .error),
+]
+
 let package = Package(
     name: "SIMDate",
     products: [
@@ -17,16 +31,13 @@ let package = Package(
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
             name: "SIMDate",
-            swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
+            swiftSettings: swiftSettings,
         ),
         .testTarget(
             name: "SIMDateTests",
             dependencies: ["SIMDate"],
-            swiftSettings: [
-                .enableUpcomingFeature("ApproachableConcurrency"),
-            ],
+            swiftSettings: swiftSettings,
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

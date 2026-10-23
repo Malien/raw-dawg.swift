@@ -1,7 +1,7 @@
 #if canImport(FoundationEssentials)
-    import FoundationEssentials
+    public import FoundationEssentials
 #else
-    import Foundation
+    public import Foundation
 #endif
 
 public enum ComponentPrecision: Sendable, Comparable {
@@ -145,7 +145,7 @@ public struct TimeZoneComponents: Sendable, OptionSet {
 }
 
 extension DateComponents {
-    @export(implementation)
+    // @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         // components: ClosedRange<ComponentPrecision> = .acceptBareDate,
@@ -161,18 +161,105 @@ extension DateComponents {
         //     "Empty `datetimeSeparator:` parameter will result in always-failing parsing"
         // )
 
-        guard span.count > 10 else { return nil }
-        guard span.count <= 32 else { return nil }
+        guard span.count >= 10 else { return nil }
 
-        let lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
-        let hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
+        let datetime: Span<UInt8>
+        let tz: TimeZone?
+
+        if span.count == 10 {
+            datetime = span
+            tz = nil
+        } else {
+            switch parseTimezone(from: span) {
+            case .malformed: return nil
+            case .missing:
+                datetime = span
+                tz = nil
+            case .present(let presentTz, let trailingByteCount):
+                datetime = span.extracting(droppingLast: trailingByteCount)
+                tz = presentTz
+            }
+
+            switch datetime.count {
+            // YYYY-MM-DDThh
+            case 13: break
+            // YYYY-MM-DDThh:mm
+            case 16: break
+            // YYYY-MM-DDThh:mm:ss
+            case 19: break
+            // YYYY-MM-DDThh:mm:ss.ss
+            case 21...32: break
+            default: return nil
+            }
+        }
+
+        let lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+        let hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
 
         var buffer = lo
-        memcpy(span, intoSIMD: &buffer)
+        memcpy(datetime, intoSIMD: &buffer)
+
+        if (buffer[10] | 0x20) == c("t") {
+            buffer[10] = c(" ")
+        }
 
         guard lanewise(buffer, liesBetween: lo, and: hi) else { return nil }
 
-        return nil
+        // Checks are split between debug-only asserts and production-enforced guards
+        // There should be no way for these asserts to trigger, they serve only as
+        // programmer documentation and assumption enforcement
+        // swift-format-ignore
+        let year =
+              buffer.asciiDigit(at: 0) * 1000
+            + buffer.asciiDigit(at: 1) * 100
+            + buffer.asciiDigit(at: 2) * 10
+            + buffer.asciiDigit(at: 3)
+        assert(year >= 0 && year < 10000)
+
+        let month = buffer.asciiDigit(at: 5) * 10 + buffer.asciiDigit(at: 6)
+        guard month <= 12 && month > 0 else { return nil }
+
+        let day = buffer.asciiDigit(at: 8) * 10 + buffer.asciiDigit(at: 9)
+        guard day > 0 && day <= 31 else { return nil }
+        // day is an interesting one, since the validity of a date depends on the
+        // year and month with specific rules DateComponents.isValidDate already
+        // enforces, we can choose to forgo the upper bound check.
+
+        let hour = buffer.asciiDigit(at: 11) * 10 + buffer.asciiDigit(at: 12)
+        assert(hour >= 0)
+        guard hour < 24 else { return nil }
+
+        // minute and second are already validated with the simd comparisons
+        let minute = buffer.asciiDigit(at: 14) * 10 + buffer.asciiDigit(at: 15)
+        assert(minute >= 0 && minute < 60)
+
+        let second = buffer.asciiDigit(at: 17) * 10 + buffer.asciiDigit(at: 18)
+        assert(second >= 0 && second < 60)
+
+        // swift-format-ignore
+        let nanosecond =
+              buffer.asciiDigit(at: 20) * 100_000_000
+            + buffer.asciiDigit(at: 21) * 10_000_000
+            + buffer.asciiDigit(at: 22) * 1_000_000
+            + buffer.asciiDigit(at: 23) * 100_000
+            + buffer.asciiDigit(at: 24) * 10_000
+            + buffer.asciiDigit(at: 25) * 1_000
+            + buffer.asciiDigit(at: 26) * 100
+            + buffer.asciiDigit(at: 27) * 10
+            + buffer.asciiDigit(at: 28)
+        assert(nanosecond >= 0 && nanosecond < 1_000_000_000)
+
+        self.init(
+            calendar: .init(identifier: .iso8601),
+            timeZone: tz,
+            year: year,
+            month: month,
+            day: day,
+            hour: hour,
+            minute: minute,
+            second: second,
+            nanosecond: nanosecond,
+        )
     }
 
     @export(implementation)
@@ -202,6 +289,88 @@ extension DateComponents {
     }
 }
 
+@usableFromInline
+internal enum ParsedTimeZone {
+    case missing
+    case malformed
+    case present(TimeZone, trailingByteCount: Int)
+}
+
+@usableFromInline
+internal func parseTimezone(from span: Span<UInt8>) -> ParsedTimeZone {
+    assert(span.count >= 8)
+
+    // TODO:
+    // ±hh:mm:ss
+    // ±hhmmss
+
+    if (span[span.count - 1] | 0x20) == c("z") {
+        return .present(.init(secondsFromGMT: 0)!, trailingByteCount: 1)
+    }
+
+    // This is most likely an unaligned load, but like, what are you gonna do?
+    // I mean, there are possibilities to do an aligned 16 byte load, with mask bits
+    // set to not trigger a page fault, and shift the values around into proper places
+    let buffer = span.bytes.load(fromByteOffset: span.count - 8, as: SIMD8<UInt8>.self)
+
+    // In the ascii table it goes like:
+    // - 0x2B: + (plus)
+    // - 0x2C: , (comma)
+    // - 0x2D: - (minus)
+
+    // ±hh:mm
+    if lanewise(buffer, liesBetween: SIMD8(constant: ",0+00:00"), and: SIMD8(constant: "99-19:59"))
+    {
+        let sign = Int(c(",")) - Int(buffer[2])
+        guard sign != 0 else { return .malformed }
+        let offset =
+            buffer.asciiDigit(at: 3) * 10 * 3600
+            + buffer.asciiDigit(at: 4) * 3600
+            + buffer.asciiDigit(at: 6) * 10 * 60
+            + buffer.asciiDigit(at: 7) * 60
+        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 6)
+    }
+
+    // ±hhmm
+    if lanewise(buffer, liesBetween: SIMD8(constant: ",,0+0000"), and: SIMD8(constant: "t99-1959"))
+    {
+        let sign = Int(c(",")) - Int(buffer[3])
+        guard sign != 0 else { return .malformed }
+        let offset =
+            buffer.asciiDigit(at: 4) * 10 * 3600
+            + buffer.asciiDigit(at: 5) * 3600
+            + buffer.asciiDigit(at: 6) * 10 * 60
+            + buffer.asciiDigit(at: 7) * 60
+        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 5)
+    }
+
+    // 99:99-19
+    // :01.1±hh
+    // T00.1±hh
+    // 89T12±hh
+    // .0000±hh
+    // ,0000±hh
+
+    // ±hh
+    if lanewise(buffer, liesBetween: SIMD8(constant: ",,,,0+00"), and: SIMD8(constant: "t9t99-19"))
+    {
+        let sign = Int(c(",")) - Int(buffer[5])
+        guard sign != 0 else { return .malformed }
+        let offset =
+            buffer.asciiDigit(at: 6) * 10 * 3600
+            + buffer.asciiDigit(at: 7) * 3600
+        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 3)
+    }
+
+    return .missing
+}
+
 extension SIMD where Scalar == UInt8 {
     /// A conventient way to init a constant simd vector.
     /// We care that the vector is composed at compile time, so we rely
@@ -211,9 +380,22 @@ extension SIMD where Scalar == UInt8 {
     internal init(constant string: StaticString) {
         self = string.withUTF8Buffer {
             assert($0.count == Self.scalarCount)
-            return Self($0)
+            return unsafe Self($0)
         }
     }
+
+    @inline(__always)
+    @usableFromInline
+    internal func asciiDigit(at index: Int) -> Int {
+        Int(self[index] - c("0"))
+    }
+}
+
+/// c char
+@inline(__always)
+@usableFromInline
+internal func c(_ char: Unicode.Scalar) -> UInt8 {
+    UInt8(ascii: char)
 }
 
 @usableFromInline
@@ -221,7 +403,7 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
     precondition(span.count <= vector.scalarCount, "input buffer exceeds SIMD vector capacity")
     span.withUnsafeBytes { source in
         withUnsafeMutableBytes(of: &vector) { target in
-            _ = memcpy(target.baseAddress, source.baseAddress, source.count)
+            _ = unsafe memcpy(target.baseAddress, source.baseAddress, source.count)
         }
     }
 }
@@ -245,14 +427,14 @@ extension String {
             return body(self.utf8.span)
         } else {
             let result = self.utf8.withContiguousStorageIfAvailable {
-                body($0.span)
+                unsafe body($0.span)
             }
             if let result { return result }
 
             // Internal representation does not support non-contiguous normalization.
             // Reallocate when necessary.
             var mutable = self
-            return mutable.withUTF8 { body($0.span) }
+            return mutable.withUTF8 { unsafe body($0.span) }
         }
     }
 }
@@ -299,7 +481,7 @@ public struct TimeZoneOption: Sendable {
 }
 
 extension Date {
-    @export(implementation)
+    // @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         // components: ClosedRange<ComponentPrecision> = .datetimeOnly,
