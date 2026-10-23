@@ -14,15 +14,15 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
     let input: String
     /// `nil` means the input must be rejected
     let expected: DateComponents?
-    /// Mirrors the (currently commented-out) parameters of `DateComponents(decodingISO8601:...)`.
+    /// Mirrors the parameters of `DateComponents(decodingISO8601:...)`.
     /// Defaults must match the ones documented in `Sources/SIMDate.swift`.
+    /// `timezone` is already live; everything else is still commented out in the source.
     let components: ClosedRange<ComponentPrecision>
     let datetimeSeparator: DateTimeSeparator
     let dateComponents: DateComponentEncoding
     let timeComponents: TimeComponentEncoding
     let decimalSeparator: DecimalSeparator
     let timezone: TimeZoneComponents
-    let offsetComponents: TimeComponentEncoding
     let sourceLocation: SourceLocation
 
     /// Lets Xcode and `swift test` re-run a single case. Inputs repeat across cases
@@ -40,8 +40,7 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneComponents = [.z, .Z, .hh, .`hh:mm`],
-        offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneComponents = .any,
         expect expected: DateComponents,
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
@@ -53,7 +52,6 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
         self.timezone = timezone
-        self.offsetComponents = offsetComponents
         self.sourceLocation = sourceLocation
     }
 
@@ -64,8 +62,7 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneComponents = [.z, .Z, .hh, .`hh:mm`],
-        offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneComponents = .any,
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
         self.input = input
@@ -76,7 +73,6 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
         self.timezone = timezone
-        self.offsetComponents = offsetComponents
         self.sourceLocation = sourceLocation
     }
 
@@ -88,15 +84,13 @@ struct DCCase: Sendable, Identifiable, CustomTestStringConvertible {
             && dateComponents == defaults.dateComponents
             && timeComponents == defaults.timeComponents
             && decimalSeparator == defaults.decimalSeparator
-            && timezone == defaults.timezone
-            && offsetComponents == defaults.offsetComponents
         if !isDefaulted {
             Issue.record(
                 "DateComponents options are not wired into the decoder yet",
                 sourceLocation: sourceLocation)
         }
-        // TODO(options): forward the options once the parameters land
-        let actual = DateComponents(decodingISO8601: input)
+        // TODO(options): forward the remaining options once the parameters land
+        let actual = DateComponents(decodingISO8601: input, timezone: timezone)
         guard let expected else {
             #expect(
                 actual == nil,
@@ -183,7 +177,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
     let timeComponents: TimeComponentEncoding
     let decimalSeparator: DecimalSeparator
     let timezone: TimeZoneOption
-    let offsetComponents: TimeComponentEncoding
     let sourceLocation: SourceLocation
 
     /// Date is Double-backed; fractional seconds compare within 1µs
@@ -204,8 +197,7 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneOption = .requirePresent(accept: [.z, .Z, .hh, .`hh:mm`]),
-        offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneOption = .requirePresent(accept: .any),
         expect expected: Date,
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
@@ -217,7 +209,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
         self.timezone = timezone
-        self.offsetComponents = offsetComponents
         self.sourceLocation = sourceLocation
     }
 
@@ -228,8 +219,7 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneOption = .requirePresent(accept: [.z, .Z, .hh, .`hh:mm`]),
-        offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneOption = .requirePresent(accept: .any),
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
         self.input = input
@@ -240,7 +230,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
         self.timeComponents = timeComponents
         self.decimalSeparator = decimalSeparator
         self.timezone = timezone
-        self.offsetComponents = offsetComponents
         self.sourceLocation = sourceLocation
     }
 
@@ -252,7 +241,6 @@ struct DateCase: Sendable, Identifiable, CustomTestStringConvertible {
             && dateComponents == defaults.dateComponents
             && timeComponents == defaults.timeComponents
             && decimalSeparator == defaults.decimalSeparator
-            && offsetComponents == defaults.offsetComponents
         if !isDefaulted {
             Issue.record(
                 "Date options are not wired into the decoder yet", sourceLocation: sourceLocation)

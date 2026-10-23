@@ -9,7 +9,7 @@ import Testing
 #endif
 
 /// `Date(decodingISO8601:)` under default options:
-/// `components: .datetimeOnly`, `timezone: .requirePresent(accept: [.z, .Z, .hh, .hh:mm])`,
+/// `components: .datetimeOnly`, `timezone: .requirePresent(accept: .any)`,
 /// everything else as for `DateComponents`.
 ///
 /// Expected instants follow Foundation's ISO 8601 calendar, quirks included
@@ -101,31 +101,49 @@ struct DateDecodingTests {
 }
 
 /// The `timezone: TimeZoneOption` parameter is live on `Date`.
-@Suite("Date decoding: TimeZoneOption", .disabled("The timezone configuration option is not setup yet"))
+@Suite("Date decoding: TimeZoneOption")
 struct DateTimeZoneOptionTests {
     static let plus2 = east(2)
     static let plus3 = east(3)
     static let newYork = TimeZone(identifier: "America/New_York")!
 
     @Test(".assume: the assumed zone applies only when the offset is omitted", arguments: [
-        DateCase("2020-02-02T08:00:34", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(2))),
-        DateCase("2020-02-02T08", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, offset: east(2))),
-        DateCase("2020-02-02T08:00:34.5", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, nanosecond: 500_000_000, offset: east(2))),
-        DateCase("2020-02-02T08:00:34Z", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34)),
-        DateCase("2020-02-02T08:00:34+05:00", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5))),
-        DateCase("2020-02-02T08:00:34-00:00", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase("2020-02-02T08:00:34", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34, offset: east(2))),
+        DateCase("2020-02-02T08", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, offset: east(2))),
+        DateCase("2020-02-02T08:00:34.5", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34, nanosecond: 500_000_000, offset: east(2))),
+        DateCase("2020-02-02T08:00:34Z", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase("2020-02-02T08:00:34+05:00", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5))),
+        DateCase("2020-02-02T08:00:34-00:00", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase("2020-02-02T08:00:34+05:30:45", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
+        DateCase("2020-02-02T08:00:34-053045", timezone: .assume(plus2, accept: .any), expect: at(2020, 2, 2, 8, 0, 34, offset: west(5, 30, 45))),
         // Named zone, outside any DST transition (EST = -05:00)
         DateCase("2020-01-15T12:00:00", timezone: .assume(newYork, accept: [.Z]), expect: at(2020, 1, 15, 12, offset: west(5))),
         DateCase("2020-07-15T12:00:00", timezone: .assume(newYork, accept: [.Z]), expect: at(2020, 7, 15, 12, offset: west(4))),
-//        DateCase(reject: "2020-02-02", timezone: .assume(plus2, accept: [.z, .Z, .hh, .`hh:mm`])),
+//        DateCase(reject: "2020-02-02", timezone: .assume(plus2, accept: .any)),
 //        DateCase(reject: "2021-02-29T00:00:00", timezone: .assume(plus2, accept: [.Z])),
     ])
     func assume(_ c: DateCase) { c.check() }
+
+    @Test(".assume: offsets outside the accepted set are rejected, not replaced by the assumed zone", arguments: [
+        DateCase("2020-02-02T08:00:34Z", timezone: .assume(plus2, accept: [.Z]), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase(reject: "2020-02-02T08:00:34z", timezone: .assume(plus2, accept: [.Z])),
+        DateCase(reject: "2020-02-02T08:00:34+05:00", timezone: .assume(plus2, accept: [.Z])),
+        DateCase("2020-02-02T08:00:34+05:30", timezone: .assume(plus2, accept: [.`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase(reject: "2020-02-02T08:00:34+0530", timezone: .assume(plus2, accept: [.`hh:mm`])),
+        DateCase(reject: "2020-02-02T08:00:34+05:30:45", timezone: .assume(plus2, accept: [.`hh:mm`])),
+        DateCase(reject: "2020-02-02T08:00:34Z", timezone: .assume(newYork, accept: .anyNumeric)),
+        DateCase("2020-01-15T12:00:00", timezone: .assume(newYork, accept: .anyNumeric), expect: at(2020, 1, 15, 12, offset: west(5))),
+    ])
+    func assumeAcceptSubset(_ c: DateCase) { c.check() }
 
     @Test(".assume(accept: []): offsets in the string are rejected", arguments: [
         DateCase("2020-02-02T08:00:34", timezone: .assume(plus2, accept: []), expect: at(2020, 2, 2, 8, 0, 34, offset: east(2))),
         DateCase(reject: "2020-02-02T08:00:34Z", timezone: .assume(plus2, accept: [])),
         DateCase(reject: "2020-02-02T08:00:34+02:00", timezone: .assume(plus2, accept: [])),
+        DateCase(reject: "2020-02-02T08:00:34+02", timezone: .assume(plus2, accept: [])),
+        DateCase(reject: "2020-02-02T08:00:34+0200", timezone: .assume(plus2, accept: [])),
+        DateCase(reject: "2020-02-02T08:00:34+020000", timezone: .assume(plus2, accept: [])),
+        DateCase(reject: "2020-02-02T08:00:34+02:00:00", timezone: .assume(plus2, accept: [])),
     ])
     func assumeAcceptingNothing(_ c: DateCase) { c.check() }
 
@@ -138,7 +156,11 @@ struct DateTimeZoneOptionTests {
         DateCase(reject: "2020-02-02T08:00:34+03:00", timezone: .requireOmitted(impose: plus3)),
         DateCase(reject: "2020-02-02T08:00:34+03", timezone: .requireOmitted(impose: plus3)),
         DateCase(reject: "2020-02-02T08:00:34-00:00", timezone: .requireOmitted(impose: plus3)),
-        DateCase(reject: "2020-02-02", timezone: .requireOmitted(impose: plus3)),
+        DateCase(reject: "2020-02-02T08:00:34+0300", timezone: .requireOmitted(impose: plus3)),
+        DateCase(reject: "2020-02-02T08:00:34+030000", timezone: .requireOmitted(impose: plus3)),
+        DateCase(reject: "2020-02-02T08:00:34+03:00:00", timezone: .requireOmitted(impose: plus3)),
+        // TODO: revisit once we gain proper `components:` param
+        // DateCase(reject: "2020-02-02", timezone: .requireOmitted(impose: plus3)),
     ])
     func requireOmitted(_ c: DateCase) { c.check() }
 
@@ -156,31 +178,53 @@ struct DateTimeZoneOptionTests {
     ])
     func zulu(_ c: DateCase) { c.check() }
 
-    @Test(".requirePresent: numeric offset resolutions", arguments: [
-        // .hh only
+    @Test(".requirePresent: each numeric form accepts only itself", arguments: [
+        // .hh
         DateCase("2020-02-02T08:00:34+05", timezone: .requirePresent(accept: [.hh]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5))),
         DateCase(reject: "2020-02-02T08:00:34+05:00", timezone: .requirePresent(accept: [.hh])),
         DateCase(reject: "2020-02-02T08:00:34+0500", timezone: .requirePresent(accept: [.hh])),
         DateCase(reject: "2020-02-02T08:00:34Z", timezone: .requirePresent(accept: [.hh])),
-        // .hh:mm only
+        // .hhmm
+        DateCase("2020-02-02T08:00:34+0530", timezone: .requirePresent(accept: [.hhmm]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase(reject: "2020-02-02T08:00:34+05:30", timezone: .requirePresent(accept: [.hhmm])),
+        DateCase(reject: "2020-02-02T08:00:34+05", timezone: .requirePresent(accept: [.hhmm])),
+        DateCase(reject: "2020-02-02T08:00:34+053045", timezone: .requirePresent(accept: [.hhmm])),
+        // .hh:mm
         DateCase("2020-02-02T08:00:34+05:30", timezone: .requirePresent(accept: [.`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
-        DateCase("2020-02-02T08:00:34+0530", timezone: .requirePresent(accept: [.`hh:mm`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase(reject: "2020-02-02T08:00:34+0530", timezone: .requirePresent(accept: [.`hh:mm`])),
         DateCase(reject: "2020-02-02T08:00:34+05", timezone: .requirePresent(accept: [.`hh:mm`])),
         DateCase(reject: "2020-02-02T08:00:34+05:30:45", timezone: .requirePresent(accept: [.`hh:mm`])),
-        // .hh:mm:ss only
+        // .hhmmss
+        DateCase("2020-02-02T08:00:34+053045", timezone: .requirePresent(accept: [.hhmmss]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
+        DateCase("2020-02-02T08:00:34-000001", timezone: .requirePresent(accept: [.hhmmss]), expect: at(2020, 2, 2, 8, 0, 34, offset: west(0, 0, 1))),
+        DateCase(reject: "2020-02-02T08:00:34+05:30:45", timezone: .requirePresent(accept: [.hhmmss])),
+        DateCase(reject: "2020-02-02T08:00:34+0530", timezone: .requirePresent(accept: [.hhmmss])),
+        DateCase(reject: "2020-02-02T08:00:34+180001", timezone: .requirePresent(accept: [.hhmmss])),
+        // .hh:mm:ss
         DateCase("2020-02-02T08:00:34+05:30:45", timezone: .requirePresent(accept: [.`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
-        DateCase("2020-02-02T08:00:34+053045", timezone: .requirePresent(accept: [.`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
         DateCase("2020-02-02T08:00:34-00:00:01", timezone: .requirePresent(accept: [.`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: west(0, 0, 1))),
+        DateCase(reject: "2020-02-02T08:00:34+053045", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
         DateCase(reject: "2020-02-02T08:00:34+05:30", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
         DateCase(reject: "2020-02-02T08:00:34+05:30:60", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
         DateCase(reject: "2020-02-02T08:00:34+18:00:01", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
         DateCase(reject: "2020-02-02T08:00:34+05:3045", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
         DateCase(reject: "2020-02-02T08:00:34+0530:45", timezone: .requirePresent(accept: [.`hh:mm:ss`])),
-        // every resolution
-        DateCase("2020-02-02T08:00:34+05", timezone: .requirePresent(accept: [.Z, .hh, .`hh:mm`, .`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5))),
-        DateCase("2020-02-02T08:00:34+05:30", timezone: .requirePresent(accept: [.Z, .hh, .`hh:mm`, .`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
-        DateCase("2020-02-02T08:00:34+05:30:45", timezone: .requirePresent(accept: [.Z, .hh, .`hh:mm`, .`hh:mm:ss`]), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
     ])
     func numericOffsets(_ c: DateCase) { c.check() }
+
+    @Test(".requirePresent: .anyNumeric and .any", arguments: [
+        DateCase("2020-02-02T08:00:34+05", timezone: .requirePresent(accept: .anyNumeric), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5))),
+        DateCase("2020-02-02T08:00:34+0530", timezone: .requirePresent(accept: .anyNumeric), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase("2020-02-02T08:00:34+05:30", timezone: .requirePresent(accept: .anyNumeric), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30))),
+        DateCase("2020-02-02T08:00:34+053045", timezone: .requirePresent(accept: .anyNumeric), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
+        DateCase("2020-02-02T08:00:34+05:30:45", timezone: .requirePresent(accept: .anyNumeric), expect: at(2020, 2, 2, 8, 0, 34, offset: east(5, 30, 45))),
+        DateCase(reject: "2020-02-02T08:00:34Z", timezone: .requirePresent(accept: .anyNumeric)),
+        DateCase(reject: "2020-02-02T08:00:34", timezone: .requirePresent(accept: .anyNumeric)),
+        DateCase("2020-02-02T08:00:34Z", timezone: .requirePresent(accept: .any), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase("2020-02-02T08:00:34z", timezone: .requirePresent(accept: .any), expect: at(2020, 2, 2, 8, 0, 34)),
+        DateCase("2020-02-02T08:00:34-053045", timezone: .requirePresent(accept: .any), expect: at(2020, 2, 2, 8, 0, 34, offset: west(5, 30, 45))),
+        DateCase(reject: "2020-02-02T08:00:34", timezone: .requirePresent(accept: .any)),
+    ])
+    func anyOffset(_ c: DateCase) { c.check() }
 
 }

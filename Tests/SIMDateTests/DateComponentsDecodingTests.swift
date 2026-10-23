@@ -11,7 +11,7 @@ import Testing
 /// `DateComponents(decodingISO8601:)` under default options:
 /// `components: .acceptBareDate`, `datetimeSeparator: [.t, .T, .space]`,
 /// `dateComponents: .separatedByDashWithLeadingZeros`, `timeComponents: .separatedByColonWithLeadingZeros`,
-/// `decimalSeparator: .dot`, `timezone: [.z, .Z, .hh, .hh:mm]`, `offsetComponents: .anyWithLeadingZeros`.
+/// `decimalSeparator: .dot`, `timezone: .any`.
 @Suite("DateComponents decoding")
 struct DateComponentsDecodingTests {
 
@@ -112,7 +112,7 @@ struct DateComponentsDecodingTests {
         DCCase("2020-02-02T08:00:34+0000", expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34+00", expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34-00", expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
-        // `.hh:mm` with offsetComponents `.anyWithLeadingZeros`: extended and basic
+        // `.hh:mm` and `.hhmm`
         DCCase("2020-02-02T08:00:34+05:30", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34+0530", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34-08:00", expect: DateComponents(timeZone: west(8), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
@@ -124,6 +124,23 @@ struct DateComponentsDecodingTests {
         // `.hh`
         DCCase("2020-02-02T08:00:34+05", expect: DateComponents(timeZone: east(5), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34-11", expect: DateComponents(timeZone: west(11), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        // `.hh:mm:ss` and `.hhmmss`
+        DCCase("2020-02-02T08:00:34+05:30:45", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34+053045", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34+05:30:00", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34-00:00:01", expect: DateComponents(timeZone: west(0, 0, 1), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34-000001", expect: DateComponents(timeZone: west(0, 0, 1), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34+00:00:59", expect: DateComponents(timeZone: east(0, 0, 59), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        // Every offset form after every time precision
+        DCCase("2020-02-02T12+05:30:45", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T12+053045", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T12+0530", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T12:30+05:30:45", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 12, minute: 30, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T12:30-053045", expect: DateComponents(timeZone: west(5, 30, 45), year: 2020, month: 2, day: 2, hour: 12, minute: 30, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T12:30-05", expect: DateComponents(timeZone: west(5), year: 2020, month: 2, day: 2, hour: 12, minute: 30, second: 0, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34.5+05:30:45", expect: DateComponents(timeZone: east(5, 30, 45), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),
+        DCCase("2020-02-02T08:00:34.123456789-053045", expect: DateComponents(timeZone: west(5, 30, 45), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 123_456_789)),
+        DCCase("2020-02-02T08:00:34.5+0530", expect: DateComponents(timeZone: east(5, 30), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),
         // Bounds: ±18:00 inclusive (Foundation's TimeZone limit)
         DCCase("2020-02-02T08:00:34+14:00", expect: DateComponents(timeZone: east(14), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34+17:59", expect: DateComponents(timeZone: east(17, 59), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
@@ -131,6 +148,9 @@ struct DateComponentsDecodingTests {
         DCCase("2020-02-02T08:00:34-18:00", expect: DateComponents(timeZone: west(18), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34+1800", expect: DateComponents(timeZone: east(18), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         DCCase("2020-02-02T08:00:34-18", expect: DateComponents(timeZone: west(18), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34+17:59:59", expect: DateComponents(timeZone: east(17, 59, 59), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34+18:00:00", expect: DateComponents(timeZone: east(18), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
+        DCCase("2020-02-02T08:00:34-180000", expect: DateComponents(timeZone: west(18), year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 0)),
         // Offset wall-clock fields are kept as written, not normalized to UTC
         DCCase("2020-01-01T00:30:00+01:00", expect: DateComponents(timeZone: east(1), year: 2020, month: 1, day: 1, hour: 0, minute: 30, second: 0, nanosecond: 0)),
         DCCase("2020-12-31T23:30:00-01:00", expect: DateComponents(timeZone: west(1), year: 2020, month: 12, day: 31, hour: 23, minute: 30, second: 0, nanosecond: 0)),

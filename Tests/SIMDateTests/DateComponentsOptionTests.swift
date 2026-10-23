@@ -39,14 +39,4 @@ struct DateComponentsOptionTests {
         DCCase("2020-02-02T08:00:34.5", decimalSeparator: .acceptAny, expect: DateComponents(year: 2020, month: 2, day: 2, hour: 8, minute: 0, second: 34, nanosecond: 500_000_000)),
     ])
     func decimalSeparator(_ c: DCCase) { c.check() }
-
-    @Test("timezone: .z modifies .Z", arguments: [
-        DCCase("2020-02-02T12Z", timezone: [.Z], expect: DateComponents(timeZone: gmt, year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
-        DCCase(reject: "2020-02-02T12z", timezone: [.Z]),
-        DCCase(reject: "2020-02-02T12Z", timezone: [.z]),
-        DCCase(reject: "2020-02-02T12z", timezone: [.z]),
-        DCCase(reject: "2020-02-02T12Z", timezone: []),
-        DCCase("2020-02-02T12", timezone: [], expect: DateComponents(year: 2020, month: 2, day: 2, hour: 12, minute: 0, second: 0, nanosecond: 0)),
-    ])
-    func timezone(_ c: DCCase) { c.check() }
 }

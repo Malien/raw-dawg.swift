@@ -129,23 +129,26 @@ public struct TimeZoneComponents: Sendable, OptionSet {
     public static let z = Self(rawValue: 1 << 0)
     /// Accept 'Z' offset
     public static let Z = Self(rawValue: 1 << 1)
-    public static let `hh` = Self(rawValue: 1 << 2)
-    public static let `hh:mm` = Self(rawValue: 1 << 3)
-    public static let `hh:mm:ss` = Self(rawValue: 1 << 4)
 
-    // zZhms
-    // XX111 hh hh:mm hh:mm:ss
-    // XX110 hh hh:mm
-    // XX101 hh       hh:mm:ss
-    // XX100 hh
-    // XX011    hh:mm hh:mm:ss
-    // XX010    hh:mm
-    // XX001          hh:mm:ss
-    // XX000
+    public static let hh = Self(rawValue: 1 << 2)
+    public static let hhmm = Self(rawValue: 1 << 3)
+    public static let hhmmss = Self(rawValue: 1 << 4)
+    public static let `hh:mm` = Self(rawValue: 1 << 5)
+    public static let `hh:mm:ss` = Self(rawValue: 1 << 6)
+
+    public static let anyNumeric: Self = [.hh, .hhmm, .hhmmss, .`hh:mm`, .`hh:mm:ss`]
+    public static let any: Self = [.z, .Z, .anyNumeric]
+
+    // non-compliant foundation-like behaviour
+    // public static let h = Self(rawValue: 1 << 7)
+    // public static let hhm = Self(rawValue: 1 << 8)
+    // public static let hhmms = Self(rawValue: 1 << 9)
+    // public static let `h:m` = Self(rawValue: 1 << 10)
+    // public static let `h:m:s` = Self(rawValue: 1 << 11)
 }
 
 extension DateComponents {
-    // @export(implementation)
+    @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         // components: ClosedRange<ComponentPrecision> = .acceptBareDate,
@@ -153,8 +156,7 @@ extension DateComponents {
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
-        // timezone: TimeZoneComponents = [.z, .Z, .hh, .`hh:mm`],
-        // offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneComponents = .any,
     ) {
         // assert(
         //     datetimeSeparator != [],
@@ -170,7 +172,7 @@ extension DateComponents {
             datetime = span
             tz = nil
         } else {
-            switch parseTimezone(from: span) {
+            switch parseTimezone(from: span, accept: timezone) {
             case .malformed: return nil
             case .missing:
                 datetime = span
@@ -270,8 +272,7 @@ extension DateComponents {
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
-        // timezone: TimeZoneComponents = [.z, .Z, .hh, .`hh:mm`],
-        // offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneComponents = .any,
     ) {
         let date = string.withUTF8Span {
             Self.init(
@@ -281,8 +282,7 @@ extension DateComponents {
                 // dateComponents: dateComponents,
                 // timeComponents: timeComponents,
                 // decimalSeparator: decimalSeparator,
-                // timezone: timezone,
-                // offsetComponents: offsetComponents,
+                timezone: timezone,
             )
         }
         if let date { self = date } else { return nil }
@@ -297,14 +297,12 @@ internal enum ParsedTimeZone {
 }
 
 @usableFromInline
-internal func parseTimezone(from span: Span<UInt8>) -> ParsedTimeZone {
-    assert(span.count >= 8)
+internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) -> ParsedTimeZone {
+    assert(span.count >= 9)
 
-    // TODO:
-    // ±hh:mm:ss
-    // ±hhmmss
-
-    if (span[span.count - 1] | 0x20) == c("z") {
+    var maybeZ = span[span.count - 1]
+    if accept.contains(.z) { maybeZ &= ~0x20 }
+    if accept.contains(.Z) && maybeZ == c("Z") {
         return .present(.init(secondsFromGMT: 0)!, trailingByteCount: 1)
     }
 
@@ -318,13 +316,41 @@ internal func parseTimezone(from span: Span<UInt8>) -> ParsedTimeZone {
     // - 0x2C: , (comma)
     // - 0x2D: - (minus)
 
+    // ±hh
+    // This SIMD vector pattern is very particular to cover the following possibilities:
+    // 99:99-19
+    // :01.1±hh
+    // T00.1±hh
+    // 89T12±hh
+    // .0000±hh
+    // ,0000±hh
+
+    // swift-format-ignore
+    if accept.contains(.hh) && lanewise(buffer,
+        liesBetween: SIMD8(constant: ",,,,0+00"),
+                and: SIMD8(constant: "t9t99-19"))
+    {
+        let sign = Int(c(",")) - Int(buffer[5])
+        guard sign != 0 else { return .malformed }
+        // swift-format-ignore
+        let offset =
+              buffer.asciiDigit(at: 6) * 10 * 3600
+            + buffer.asciiDigit(at: 7) * 3600
+        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 3)
+    }
+
     // ±hh:mm
-    if lanewise(buffer, liesBetween: SIMD8(constant: ",0+00:00"), and: SIMD8(constant: "99-19:59"))
+    // swift-format-ignore
+    if accept.contains(.`hh:mm`) && lanewise(buffer,
+        liesBetween: SIMD8(constant: ",0+00:00"),
+                and: SIMD8(constant: "99-19:59"))
     {
         let sign = Int(c(",")) - Int(buffer[2])
         guard sign != 0 else { return .malformed }
         let offset =
-            buffer.asciiDigit(at: 3) * 10 * 3600
+              buffer.asciiDigit(at: 3) * 10 * 3600
             + buffer.asciiDigit(at: 4) * 3600
             + buffer.asciiDigit(at: 6) * 10 * 60
             + buffer.asciiDigit(at: 7) * 60
@@ -334,12 +360,15 @@ internal func parseTimezone(from span: Span<UInt8>) -> ParsedTimeZone {
     }
 
     // ±hhmm
-    if lanewise(buffer, liesBetween: SIMD8(constant: ",,0+0000"), and: SIMD8(constant: "t99-1959"))
+    // swift-format-ignore
+    if accept.contains(.hhmm) && lanewise(buffer,
+        liesBetween: SIMD8(constant: ",,0+0000"),
+                and: SIMD8(constant: "t99-1959"))
     {
         let sign = Int(c(",")) - Int(buffer[3])
         guard sign != 0 else { return .malformed }
         let offset =
-            buffer.asciiDigit(at: 4) * 10 * 3600
+              buffer.asciiDigit(at: 4) * 10 * 3600
             + buffer.asciiDigit(at: 5) * 3600
             + buffer.asciiDigit(at: 6) * 10 * 60
             + buffer.asciiDigit(at: 7) * 60
@@ -348,24 +377,57 @@ internal func parseTimezone(from span: Span<UInt8>) -> ParsedTimeZone {
         return .present(tz, trailingByteCount: 5)
     }
 
-    // 99:99-19
-    // :01.1±hh
-    // T00.1±hh
-    // 89T12±hh
-    // .0000±hh
-    // ,0000±hh
-
-    // ±hh
-    if lanewise(buffer, liesBetween: SIMD8(constant: ",,,,0+00"), and: SIMD8(constant: "t9t99-19"))
+    // ±hhmmss
+    // swift-format-ignore
+    if accept.contains(.hhmmss) && lanewise(buffer,
+        liesBetween: SIMD8(constant: "0+000000"),
+                and: SIMD8(constant: "9-195959"))
     {
-        let sign = Int(c(",")) - Int(buffer[5])
+        let sign = Int(c(",")) - Int(buffer[1])
         guard sign != 0 else { return .malformed }
         let offset =
-            buffer.asciiDigit(at: 6) * 10 * 3600
-            + buffer.asciiDigit(at: 7) * 3600
+              buffer.asciiDigit(at: 2) * 10 * 3600
+            + buffer.asciiDigit(at: 3) * 3600
+            + buffer.asciiDigit(at: 4) * 10 * 60
+            + buffer.asciiDigit(at: 5) * 60
+            + buffer.asciiDigit(at: 6) * 10
+            + buffer.asciiDigit(at: 7)
         guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
-        return .present(tz, trailingByteCount: 3)
+        return .present(tz, trailingByteCount: 7)
+    }
+
+    // ±hh:mm:ss
+    // swift-format-ignore
+    let `follows hh:mm:ss` = accept.contains(.`hh:mm:ss`) && lanewise(buffer,
+        liesBetween: SIMD8(constant: "00:00:00"),
+                and: SIMD8(constant: "19:59:59"))
+    if span[span.count - 9] == c("+") && `follows hh:mm:ss` {
+        // swift-format-ignore
+        let offset =
+              buffer.asciiDigit(at: 0) * 10 * 3600
+            + buffer.asciiDigit(at: 1) * 3600
+            + buffer.asciiDigit(at: 3) * 10 * 60
+            + buffer.asciiDigit(at: 4) * 60
+            + buffer.asciiDigit(at: 6) * 10
+            + buffer.asciiDigit(at: 7)
+        guard let tz = TimeZone(secondsFromGMT: offset)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 9)
+    }
+
+    if span[span.count - 9] == c("-") && `follows hh:mm:ss` {
+        // swift-format-ignore
+        let offset =
+              buffer.asciiDigit(at: 0) * 10 * 3600
+            + buffer.asciiDigit(at: 1) * 3600
+            + buffer.asciiDigit(at: 3) * 10 * 60
+            + buffer.asciiDigit(at: 4) * 60
+            + buffer.asciiDigit(at: 6) * 10
+            + buffer.asciiDigit(at: 7)
+        guard let tz = TimeZone(secondsFromGMT: -offset)
+        else { return .malformed }
+        return .present(tz, trailingByteCount: 9)
     }
 
     return .missing
@@ -489,8 +551,7 @@ extension Date {
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneOption = .requirePresent(accept: [.z, .Z, .hh, .`hh:mm`]),
-        // offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneOption = .requirePresent(accept: .any),
     ) {
         guard
             var components = DateComponents(
@@ -500,12 +561,18 @@ extension Date {
                 // dateComponents: dateComponents,
                 // timeComponents: timeComponents,
                 // decimalSeparator: decimalSeparator,
-                // timezone: timezone.accept,
-                // offsetComponents: offsetComponents
+                timezone: timezone.accept,
             )
         else { return nil }
 
-        components.timeZone ??= timezone.assumedTimezone
+        switch (components.timeZone, timezone.assumedTimezone) {
+        // .requirePresent and was not present
+        case (nil, nil): return nil
+        // .impose/.assume
+        case (nil, let tz?): components.timeZone = tz
+        // explicitly set, and successfully parsed
+        case (_?, _): break
+        }
 
         if let date = components.date { self = date } else { return nil }
     }
@@ -518,8 +585,7 @@ extension Date {
         // dateComponents: DateComponentEncoding = .separatedByDashWithLeadingZeros,
         // timeComponents: TimeComponentEncoding = .separatedByColonWithLeadingZeros,
         // decimalSeparator: DecimalSeparator = .dot,
-        timezone: TimeZoneOption = .requirePresent(accept: [.z, .Z, .hh, .`hh:mm`]),
-        // offsetComponents: TimeComponentEncoding = .anyWithLeadingZeros,
+        timezone: TimeZoneOption = .requirePresent(accept: .any),
     ) {
         let date = string.withUTF8Span {
             Self.init(
@@ -535,42 +601,4 @@ extension Date {
         }
         if let date { self = date } else { return nil }
     }
-}
-
-infix operator ??= : AssignmentPrecedence
-
-@usableFromInline
-@discardableResult
-func ??= <T>(lhs: inout T?, rhs: @autoclosure () -> T) -> T {
-    if let lhs { return lhs }
-    let res = rhs()
-    lhs = res
-    return res
-}
-
-@usableFromInline
-@discardableResult
-func ??= <T, E>(lhs: inout T?, rhs: @autoclosure () throws(E) -> T) throws(E) -> T {
-    if let lhs { return lhs }
-    let res = try rhs()
-    lhs = res
-    return res
-}
-
-@usableFromInline
-@discardableResult
-func ??= <T>(lhs: inout T?, rhs: @autoclosure () -> T?) -> T? {
-    if let lhs { return lhs }
-    let res = rhs()
-    lhs = res
-    return res
-}
-
-@usableFromInline
-@discardableResult
-func ??= <T, E>(lhs: inout T?, rhs: @autoclosure () throws(E) -> T?) throws(E) -> T? {
-    if let lhs { return lhs }
-    let res = try rhs()
-    lhs = res
-    return res
 }
