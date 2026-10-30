@@ -53,7 +53,7 @@ struct DateComponentsDateTimeSeparatorTests {
     func combined(_ c: DCCase) { c.check() }
 
     @Test("separator: [] is the same as .dateOnly", arguments: [
-        DCCase("2020-02-02", components: .datetime(separator: [], range: anyPrecision), expect: bareDate),
+        DCCase("2020-02-02", components: .datetime(separator: [], range: anyPrecision), expect: DateComponents(year: 2020, month: 2, day: 2)),
         DCCase(reject: "2020-02-02T08:00:34", components: .datetime(separator: [], range: anyPrecision)),
         DCCase(reject: "2020-02-02t08:00:34", components: .datetime(separator: [], range: anyPrecision)),
         DCCase(reject: "2020-02-02 08:00:34", components: .datetime(separator: [], range: anyPrecision)),
@@ -62,14 +62,14 @@ struct DateComponentsDateTimeSeparatorTests {
         // an offset on a bare date is still malformed
         DCCase(reject: "2020-02-02Z", components: .datetime(separator: [], range: anyPrecision)),
         // a date-only range admits no time part, whatever the separator
-        DCCase("2020-02-02", components: .datetime(separator: [.T], range: .date ... .date), expect: bareDate),
+        DCCase("2020-02-02", components: .datetime(separator: [.T], range: .date ... .date), expect: DateComponents(year: 2020, month: 2, day: 2)),
         DCCase(reject: "2020-02-02T08:00:34", components: .datetime(separator: [.T], range: .date ... .date)),
     ])
     func empty(_ c: DCCase) { c.check() }
 
     @Test("Bare dates are unaffected by the set", arguments: [
         DCCase("2020-02-02", components: .datetime(separator: [.T], range: anyPrecision), expect: bareDate),
-        DCCase("2020-02-02", components: .datetime(separator: [.t], range: anyPrecision), expect: bareDate),
+        DCCase("2020-02-02", components: .datetime(separator: [.t, .T], range: anyPrecision), expect: bareDate),
         DCCase("2020-02-02", components: .datetime(separator: [.space], range: anyPrecision), expect: bareDate),
     ])
     func bareDates(_ c: DCCase) { c.check() }

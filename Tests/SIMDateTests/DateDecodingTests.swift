@@ -247,3 +247,33 @@ struct DateDateTimeSeparatorTests {
     ])
     func separators(_ c: DateCase) { c.check() }
 }
+
+/// The `range` of `ComponentsOption` on `Date`; the full matrix lives in `DateComponentsPrecisionTests`.
+/// Fields left nil by the range resolve to their start (midnight, :00, .0).
+@Suite("Date decoding: precision range")
+struct DatePrecisionTests {
+    static let millis = ComponentPrecision.subsecond(precision: .millis)
+
+    @Test("The range is respected", arguments: [
+        DateCase("2020-02-02T12Z", components: .datetime(range: .hour ... .hour), expect: at(2020, 2, 2, 12)),
+        DateCase(reject: "2020-02-02T12:30Z", components: .datetime(range: .hour ... .hour)),
+        DateCase("2020-02-02T12:30+05:30", components: .datetime(range: .minute ... .second), expect: at(2020, 2, 2, 12, 30, offset: east(5, 30))),
+        DateCase(reject: "2020-02-02T12+05:30", components: .datetime(range: .minute ... .second)),
+        DateCase(reject: "2020-02-02T12:30:00.5+05:30", components: .datetime(range: .minute ... .second)),
+        DateCase("2020-02-02T08:00:34.123Z", components: .datetime(range: millis ... millis), expect: at(2020, 2, 2, 8, 0, 34, nanosecond: 123_000_000)),
+        DateCase(reject: "2020-02-02T08:00:34.12Z", components: .datetime(range: millis ... millis)),
+        DateCase(reject: "2020-02-02T08:00:34Z", components: .datetime(range: millis ... millis)),
+    ])
+    func ranges(_ c: DateCase) { c.check() }
+
+    /// An offset on a bare date is malformed, so a bare date needs an assumed or imposed zone
+    @Test("Bare dates resolve to midnight in the assumed or imposed zone", arguments: [
+        DateCase("2020-02-02", components: .dateOnly, timezone: .requireOmitted(impose: east(2)), expect: at(2020, 2, 2, offset: east(2))),
+        DateCase("2020-02-02", components: .acceptBareDate, timezone: .assume(east(2), accept: .any), expect: at(2020, 2, 2, offset: east(2))),
+        DateCase("2020-02-02T12+05:00", components: .acceptBareDate, timezone: .assume(east(2), accept: .any), expect: at(2020, 2, 2, 12, offset: east(5))),
+        DateCase("2020-02-02", components: .datetime(range: .date ... .minute), timezone: .assume(gmt, accept: .any), expect: at(2020, 2, 2)),
+        DateCase(reject: "2020-02-02", components: .dateOnly, timezone: .requirePresent(accept: .any)),
+        DateCase(reject: "2020-02-02T12Z", components: .dateOnly, timezone: .assume(gmt, accept: .any)),
+    ])
+    func bareDates(_ c: DateCase) { c.check() }
+}

@@ -153,7 +153,7 @@ public struct TimeZoneComponents: Sendable, OptionSet {
 }
 
 extension DateComponents {
-    @export(implementation)
+    // @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         components: ComponentsOption = .acceptBareDate,
@@ -167,7 +167,7 @@ extension DateComponents {
         let datetime: Span<UInt8>
         let tz: TimeZone?
 
-        if span.count == 10 {
+        if components.range.lowerBound == .date && span.count == 10 {
             datetime = span
             tz = nil
         } else {
@@ -183,13 +183,17 @@ extension DateComponents {
 
             switch datetime.count {
             // YYYY-MM-DDThh
-            case 13: break
+            case 13 where components.range.contains(.hour): break
             // YYYY-MM-DDThh:mm
-            case 16: break
+            case 16 where components.range.contains(.minute): break
             // YYYY-MM-DDThh:mm:ss
-            case 19: break
+            case 19 where components.range.contains(.second): break
             // YYYY-MM-DDThh:mm:ss.ss
-            case 21...32: break
+            case 21...32
+            where components.range.contains(
+                .subsecond(precision: .digits(UInt8(datetime.count) - 20))
+            ):
+                break
             default: return nil
             }
         }
@@ -197,78 +201,6 @@ extension DateComponents {
         let lo: SIMD32<UInt8>
         let hi: SIMD32<UInt8>
         var buffer: SIMD32<UInt8>
-        // switch components.separator {
-        // case [], [.t]: preconditionFailure("TODO")
-        //
-        // case [.T]:
-        //     lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //
-        // case [.space], [.space, .t]:
-        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //
-        // case [.T, .t]:
-        //     lo = SIMD32(constant: "0000-00-00t00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39t29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //     buffer[10] |= 0x20
-        //
-        // case [.space, .T]:
-        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //     if buffer[10] == c("T") {
-        //         buffer[10] = c(" ")
-        //     }
-        //
-        // case [.space, .t, .T]:
-        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //     if (buffer[10] | 0x20) == c("t") {
-        //         buffer[10] = c(" ")
-        //     }
-        //
-        // default: assertionFailure("components.separator contains an invalid bitpattern")
-        // }
-
-        // switch components.separator {
-        // case [], [.t]: preconditionFailure("TODO")
-        //
-        // case [.T], [.T, .t]:
-        //     lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //     if components.separator.contains(.t) {
-        //         buffer[10] &= ~0x20
-        //     }
-        //
-        // case [.space], [.space, .t], [.space, .T], [.space, .T, .t]:
-        //     lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-        //     hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
-        //     buffer = lo
-        //     memcpy(datetime, intoSIMD: &buffer)
-        //
-        //     var actualSeparator = buffer[10]
-        //     if components.separator.contains(.t) {
-        //         actualSeparator &= ~0x20
-        //     }
-        //     if components.separator.contains(.T) && actualSeparator == c("T") {
-        //         buffer[10] = c(" ")
-        //     }
-        //
-        // default: assertionFailure("components.separator contains an invalid bitpattern")
-        // }
-
         if components.separator.contains(.space) || datetime.count == 10 {
             lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
             hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
@@ -293,52 +225,13 @@ extension DateComponents {
         } else {
             // assertionFailure(
             //     """
-            //     components.separator of [] or [.t] should've been handled uptop in the bare-date 
-            //     case, since this bitpattern of TimeZoneOption(separator: [], range: range) where 
+            //     components.separator of [] or [.t] should've been handled uptop in the bare-date
+            //     case, since this bitpattern of TimeZoneOption(separator: [], range: range) where
             //     range != .date ... .date, should be illegal
             //     """
             // )
             return nil
         }
-
-        // T       01010100
-        // t       01110100
-        // <space> 00100000
-        // 0x20    00100000
-
-        // if (buffer[10] | 0x20) == c("t") {
-        //     buffer[10] = c(" ")
-        // }
-
-        // if buffer[10] == c(" ") {
-        //     buffer[10] = c("T")
-        // } else {
-        //     buffer[10] &= ~0x20
-        // }
-
-        // read -> or -> branch -> write
-
-        //   lda r1 (buffer[10])
-        //   or r1 0x20
-        //   test 't'
-        //   jne skip
-        //   str (buffer[10]) ' '
-        // skip:
-        //   ...rest
-
-        // read -> branch -> write
-        //                -> and -> write
-
-        //   lda r1 (buffer[10])
-        //   test ' '
-        //   jne not_space
-        //   str (buffer[10]) 'T'
-        //   jmp rest
-        // not_space:
-        //   and r1 (~0x20)
-        //   str (buffer[10]) r1
-        // rest:
-        //   ...rest
 
         guard lanewise(buffer, liesBetween: lo, and: hi) else { return nil }
 
@@ -362,29 +255,53 @@ extension DateComponents {
         // year and month with specific rules DateComponents.isValidDate already
         // enforces, we can choose to forgo the upper bound check.
 
-        let hour = buffer.asciiDigit(at: 11) * 10 + buffer.asciiDigit(at: 12)
-        assert(hour >= 0)
-        guard hour < 24 else { return nil }
+        let hour: Int?
+        if components.range.upperBound >= .hour {
+            let h = buffer.asciiDigit(at: 11) * 10 + buffer.asciiDigit(at: 12)
+            assert(h >= 0)
+            guard h < 24 else { return nil }
+            hour = h
+        } else {
+            hour = nil
+        }
 
         // minute and second are already validated with the simd comparisons
-        let minute = buffer.asciiDigit(at: 14) * 10 + buffer.asciiDigit(at: 15)
-        assert(minute >= 0 && minute < 60)
+        let minute: Int?
+        if components.range.upperBound >= .minute {
+            let m = buffer.asciiDigit(at: 14) * 10 + buffer.asciiDigit(at: 15)
+            assert(m >= 0 && m < 60)
+            minute = m
+        } else {
+            minute = nil
+        }
 
-        let second = buffer.asciiDigit(at: 17) * 10 + buffer.asciiDigit(at: 18)
-        assert(second >= 0 && second < 60)
+        let second: Int?
+        if components.range.upperBound >= .second {
+            let s = buffer.asciiDigit(at: 17) * 10 + buffer.asciiDigit(at: 18)
+            assert(s >= 0 && s < 60)
+            second = s
+        } else {
+            second = nil
+        }
 
-        // swift-format-ignore
-        let nanosecond =
-              buffer.asciiDigit(at: 20) * 100_000_000
-            + buffer.asciiDigit(at: 21) * 10_000_000
-            + buffer.asciiDigit(at: 22) * 1_000_000
-            + buffer.asciiDigit(at: 23) * 100_000
-            + buffer.asciiDigit(at: 24) * 10_000
-            + buffer.asciiDigit(at: 25) * 1_000
-            + buffer.asciiDigit(at: 26) * 100
-            + buffer.asciiDigit(at: 27) * 10
-            + buffer.asciiDigit(at: 28)
-        assert(nanosecond >= 0 && nanosecond < 1_000_000_000)
+        var nanosecond: Int? = nil
+        if case .subsecond(_) = components.range.upperBound {
+            // swift-format-ignore
+            let ns =
+                  buffer.asciiDigit(at: 20) * 100_000_000
+                + buffer.asciiDigit(at: 21) * 10_000_000
+                + buffer.asciiDigit(at: 22) * 1_000_000
+                + buffer.asciiDigit(at: 23) * 100_000
+                + buffer.asciiDigit(at: 24) * 10_000
+                + buffer.asciiDigit(at: 25) * 1_000
+                + buffer.asciiDigit(at: 26) * 100
+                + buffer.asciiDigit(at: 27) * 10
+                + buffer.asciiDigit(at: 28)
+            assert(ns >= 0 && ns < 1_000_000_000)
+            nanosecond = ns
+        } else {
+            nanosecond = nil
+        }
 
         self.init(
             calendar: .init(identifier: .iso8601),
