@@ -198,13 +198,11 @@ extension DateComponents {
             }
         }
 
-        let lo: SIMD32<UInt8>
-        let hi: SIMD32<UInt8>
+        let base: SIMD32<UInt8>
         var buffer: SIMD32<UInt8>
         if components.separator.contains(.space) || datetime.count == 10 {
-            lo = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
-            hi = SIMD32(constant: "9999-19-39 29:59:59.999999999999")
-            buffer = lo
+            base = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+            buffer = base
             memcpy(datetime, intoSIMD: &buffer)
 
             var actualSeparator = buffer[10]
@@ -215,9 +213,8 @@ extension DateComponents {
                 buffer[10] = c(" ")
             }
         } else if components.separator.contains(.T) {
-            lo = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
-            hi = SIMD32(constant: "9999-19-39T29:59:59.999999999999")
-            buffer = lo
+            base = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
+            buffer = base
             memcpy(datetime, intoSIMD: &buffer)
             if components.separator.contains(.t) {
                 buffer[10] &= ~0x20
@@ -233,23 +230,41 @@ extension DateComponents {
             return nil
         }
 
-        guard lanewise(buffer, liesBetween: lo, and: hi) else { return nil }
+        buffer &-= base
+        let upperBound = SIMD32<UInt8>(
+            9, 9, 9, 9,  // year
+            0,  // -
+            1, 9,  // month
+            0,  // -
+            3, 9,  // day
+            0,  // T
+            2, 9,  // hour
+            0,  // :
+            5, 9,  // minute
+            0,  // :
+            5, 9,  // second
+            0,  // .
+            9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,  // subsecond
+        )
+
+        let allTrue = SIMDMask<SIMD32<UInt8>.MaskStorage>(repeating: true)
+        guard (buffer .<= upperBound) == allTrue else { return nil }
 
         // Checks are split between debug-only asserts and production-enforced guards
         // There should be no way for these asserts to trigger, they serve only as
         // programmer documentation and assumption enforcement
         // swift-format-ignore
         let year =
-              buffer.asciiDigit(at: 0) * 1000
-            + buffer.asciiDigit(at: 1) * 100
-            + buffer.asciiDigit(at: 2) * 10
-            + buffer.asciiDigit(at: 3)
+              Int(buffer[0]) * 1000
+            + Int(buffer[1]) * 100
+            + Int(buffer[2]) * 10
+            + Int(buffer[3])
         assert(year >= 0 && year < 10000)
 
-        let month = buffer.asciiDigit(at: 5) * 10 + buffer.asciiDigit(at: 6)
+        let month = Int(buffer[5] * 10 + buffer[6])
         guard month <= 12 && month > 0 else { return nil }
 
-        let day = buffer.asciiDigit(at: 8) * 10 + buffer.asciiDigit(at: 9)
+        let day = Int(buffer[8] * 10 + buffer[9])
         guard day > 0 && day <= 31 else { return nil }
         // day is an interesting one, since the validity of a date depends on the
         // year and month with specific rules DateComponents.isValidDate already
@@ -257,10 +272,10 @@ extension DateComponents {
 
         let hour: Int?
         if components.range.upperBound >= .hour {
-            let h = buffer.asciiDigit(at: 11) * 10 + buffer.asciiDigit(at: 12)
+            let h = buffer[11] * 10 + buffer[12]
             assert(h >= 0)
             guard h < 24 else { return nil }
-            hour = h
+            hour = Int(h)
         } else {
             hour = nil
         }
@@ -268,18 +283,18 @@ extension DateComponents {
         // minute and second are already validated with the simd comparisons
         let minute: Int?
         if components.range.upperBound >= .minute {
-            let m = buffer.asciiDigit(at: 14) * 10 + buffer.asciiDigit(at: 15)
+            let m = buffer[14] * 10 + buffer[15]
             assert(m >= 0 && m < 60)
-            minute = m
+            minute = Int(m)
         } else {
             minute = nil
         }
 
         let second: Int?
         if components.range.upperBound >= .second {
-            let s = buffer.asciiDigit(at: 17) * 10 + buffer.asciiDigit(at: 18)
+            let s = buffer[17] * 10 + buffer[18]
             assert(s >= 0 && s < 60)
-            second = s
+            second = Int(s)
         } else {
             second = nil
         }
@@ -288,15 +303,15 @@ extension DateComponents {
         if case .subsecond(_) = components.range.upperBound {
             // swift-format-ignore
             let ns =
-                  buffer.asciiDigit(at: 20) * 100_000_000
-                + buffer.asciiDigit(at: 21) * 10_000_000
-                + buffer.asciiDigit(at: 22) * 1_000_000
-                + buffer.asciiDigit(at: 23) * 100_000
-                + buffer.asciiDigit(at: 24) * 10_000
-                + buffer.asciiDigit(at: 25) * 1_000
-                + buffer.asciiDigit(at: 26) * 100
-                + buffer.asciiDigit(at: 27) * 10
-                + buffer.asciiDigit(at: 28)
+                  Int(buffer[20]) * 100_000_000
+                + Int(buffer[21]) * 10_000_000
+                + Int(buffer[22]) * 1_000_000
+                + Int(buffer[23]) * 100_000
+                + Int(buffer[24]) * 10_000
+                + Int(buffer[25]) * 1_000
+                + Int(buffer[26]) * 100
+                + Int(buffer[27]) * 10
+                + Int(buffer[28])
             assert(ns >= 0 && ns < 1_000_000_000)
             nanosecond = ns
         } else {
