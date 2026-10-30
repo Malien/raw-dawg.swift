@@ -92,36 +92,37 @@ public struct DateTimeSeparator: Sendable, OptionSet {
     public static let space = DateTimeSeparator(rawValue: 1 << 2)
 }
 
-public enum DateComponentEncoding: Sendable {
-    /// `YYYY-MM-DD`
-    case separatedByDashWithLeadingZeros
-    /// `YYYYMMDD`
-    case conjoinedWithLeadingZeros
-    /// `YYYY-MM-DD` or `YYYYMMDD`
-    case anyWithLeadingZeros
-    // /// `Y-M-D`. allows parsing non-standard dates like 123-8-12
-    // case separatedByDashWithoutLeadingZeros
-}
-
-public enum TimeComponentEncoding: Sendable {
-    /// `hh:mm:ss`
-    case separatedByColonWithLeadingZeros
-    /// `hhmmss`
-    case conjoinedWithLeadingZeros
-    /// `hh:mm:ss` or `hhmmss`
-    case anyWithLeadingZeros
-    // /// `h:m:s`. allows parsing non-standard times like 8:4:12
-    // case separatedByColonWithoutLeadingZeros
-}
-
-public enum DecimalSeparator: Sendable {
-    /// `.`
-    case dot
-    /// `,`
-    case comma
-    /// `.` or `,`
-    case acceptAny
-}
+// TODO: Implement these later
+// public enum DateComponentEncoding: Sendable {
+//     /// `YYYY-MM-DD`
+//     case separatedByDashWithLeadingZeros
+//     /// `YYYYMMDD`
+//     case conjoinedWithLeadingZeros
+//     /// `YYYY-MM-DD` or `YYYYMMDD`
+//     case anyWithLeadingZeros
+//     // /// `Y-M-D`. allows parsing non-standard dates like 123-8-12
+//     // case separatedByDashWithoutLeadingZeros
+// }
+//
+// public enum TimeComponentEncoding: Sendable {
+//     /// `hh:mm:ss`
+//     case separatedByColonWithLeadingZeros
+//     /// `hhmmss`
+//     case conjoinedWithLeadingZeros
+//     /// `hh:mm:ss` or `hhmmss`
+//     case anyWithLeadingZeros
+//     // /// `h:m:s`. allows parsing non-standard times like 8:4:12
+//     // case separatedByColonWithoutLeadingZeros
+// }
+//
+// public enum DecimalSeparator: Sendable {
+//     /// `.`
+//     case dot
+//     /// `,`
+//     case comma
+//     /// `.` or `,`
+//     case acceptAny
+// }
 
 public struct TimeZoneComponents: Sendable, OptionSet {
     public let rawValue: UInt8
@@ -153,7 +154,12 @@ public struct TimeZoneComponents: Sendable, OptionSet {
 }
 
 extension DateComponents {
-    // @export(implementation)
+    // I rely on constant folding to produce decent code. This is basically a template
+    // to eliminate as many branches as necessary, given a static set of configuration
+    // options. If you care for code size, the client may define a single symbol with
+    // set parameters to ensure it is only compiled once.
+    @export(implementation)
+    @inline(__always)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         components: ComponentsOption = .acceptBareDate,
@@ -198,10 +204,12 @@ extension DateComponents {
             }
         }
 
-        let base: SIMD32<UInt8>
+        // Depending on the allowed separators, pick an optimal SIMD constant
+        // and conform the buffer from the ascii range to the pure numeric repr
+        // of YYYY0MM0DD0hh0mm0ss0ssssssssssss
         var buffer: SIMD32<UInt8>
         if components.separator.contains(.space) || datetime.count == 10 {
-            base = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
+            let base = SIMD32(constant: "0000-00-00 00:00:00.000000000000")
             buffer = base
             memcpy(datetime, intoSIMD: &buffer)
 
@@ -212,25 +220,20 @@ extension DateComponents {
             if components.separator.contains(.T) && actualSeparator == c("T") {
                 buffer[10] = c(" ")
             }
+            buffer &-= base
         } else if components.separator.contains(.T) {
-            base = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
+            let base = SIMD32(constant: "0000-00-00T00:00:00.000000000000")
             buffer = base
             memcpy(datetime, intoSIMD: &buffer)
             if components.separator.contains(.t) {
                 buffer[10] &= ~0x20
             }
+            buffer &-= base
         } else {
-            // assertionFailure(
-            //     """
-            //     components.separator of [] or [.t] should've been handled uptop in the bare-date
-            //     case, since this bitpattern of TimeZoneOption(separator: [], range: range) where
-            //     range != .date ... .date, should be illegal
-            //     """
-            // )
+            // Not a pure date, nor
             return nil
         }
 
-        buffer &-= base
         let upperBound = SIMD32<UInt8>(
             9, 9, 9, 9,  // year
             0,  // -
@@ -247,14 +250,13 @@ extension DateComponents {
             9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,  // subsecond
         )
 
-        guard lanewise(buffer, lessThenOrEqualTo: upperBound) else { return nil }
+        guard (buffer .<= upperBound) == SIMDMask(repeating: true) else { return nil }
 
         // Checks are split between debug-only asserts and production-enforced guards
         // There should be no way for these asserts to trigger, they serve only as
         // programmer documentation and assumption enforcement
-        // swift-format-ignore
         let year =
-              Int(buffer[0]) * 1000
+            Int(buffer[0]) * 1000
             + Int(buffer[1]) * 100
             + Int(buffer[2]) * 10
             + Int(buffer[3])
@@ -300,9 +302,8 @@ extension DateComponents {
 
         var nanosecond: Int? = nil
         if case .subsecond(_) = components.range.upperBound {
-            // swift-format-ignore
             let ns =
-                  Int(buffer[20]) * 100_000_000
+                Int(buffer[20]) * 100_000_000
                 + Int(buffer[21]) * 10_000_000
                 + Int(buffer[22]) * 1_000_000
                 + Int(buffer[23]) * 100_000
@@ -361,6 +362,7 @@ internal enum ParsedTimeZone {
 }
 
 @usableFromInline
+@inline(__always)
 internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) -> ParsedTimeZone {
     assert(span.count >= 9)
 
@@ -517,23 +519,6 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
     }
 }
 
-@usableFromInline
-internal func lanewise<Vector>(
-    _ x: Vector,
-    liesBetween lowerBound: Vector,
-    and upperBound: Vector
-) -> Bool where Vector: SIMD, Vector.Scalar: Comparable {
-    ((x .>= lowerBound) .& (x .<= upperBound)) == SIMDMask(repeating: true)
-}
-
-@usableFromInline
-internal func lanewise<Vector>(
-    _ x: Vector,
-    lessThenOrEqualTo upperBound: Vector,
-) -> Bool where Vector: SIMD, Vector.Scalar: Comparable {
-    (x .<= upperBound) == SIMDMask(repeating: true)
-}
-
 /// The name is weird. Checks that the simd vector lies between lower and upper
 /// bounds, returns an x - lowerBound on success.
 @usableFromInline
@@ -547,7 +532,7 @@ internal func impose<Vector>(
     let upperBound = Vector(constant: asciiHi)
     let subtracted = x &- lowerBound
 
-    guard lanewise(subtracted, lessThenOrEqualTo: upperBound &- lowerBound)
+    guard (subtracted .<= upperBound &- lowerBound) == SIMDMask(repeating: true)
     else { return nil }
 
     return subtracted
@@ -579,7 +564,7 @@ public struct TimeZoneOption: Sendable {
     @usableFromInline
     internal let accept: TimeZoneComponents
 
-    @usableFromInline
+    @export(implementation)
     internal init(assumedTimezone: TimeZone?, accept pattern: TimeZoneComponents) {
         self.assumedTimezone = assumedTimezone
         self.accept = pattern
@@ -615,7 +600,7 @@ public struct TimeZoneOption: Sendable {
 }
 
 extension Date {
-    // @export(implementation)
+    @export(implementation)
     public init?(
         decodingISO8601 span: Span<UInt8>,
         components: ComponentsOption = .datetimeOnly,
