@@ -247,8 +247,7 @@ extension DateComponents {
             9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,  // subsecond
         )
 
-        let allTrue = SIMDMask<SIMD32<UInt8>.MaskStorage>(repeating: true)
-        guard (buffer .<= upperBound) == allTrue else { return nil }
+        guard lanewise(buffer, lessThenOrEqualTo: upperBound) else { return nil }
 
         // Checks are split between debug-only asserts and production-enforced guards
         // There should be no way for these asserts to trigger, they serve only as
@@ -390,107 +389,90 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
     // .0000±hh
     // ,0000±hh
 
-    // swift-format-ignore
-    if accept.contains(.hh) && lanewise(buffer,
-        liesBetween: SIMD8(constant: ",,,,0+00"),
-                and: SIMD8(constant: "t9t99-19"))
+    if accept.contains(.hh),
+        let buffer = impose(buffer, lowerBound: ",,,,0+00", upperBound: "t9t99-19")
     {
-        let sign = Int(c(",")) - Int(buffer[5])
+        let sign = 1 - Int(buffer[5])
         guard sign != 0 else { return .malformed }
-        // swift-format-ignore
         let offset =
-              buffer.asciiDigit(at: 6) * 10 * 3600
-            + buffer.asciiDigit(at: 7) * 3600
+            Int(buffer[6]) * 10 * 3600
+            + Int(buffer[7]) * 3600
         guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 3)
     }
 
     // ±hh:mm
-    // swift-format-ignore
-    if accept.contains(.`hh:mm`) && lanewise(buffer,
-        liesBetween: SIMD8(constant: ",0+00:00"),
-                and: SIMD8(constant: "99-19:59"))
+    if accept.contains(.`hh:mm`),
+        let buffer = impose(buffer, lowerBound: ",0+00:00", upperBound: "99-19:59")
     {
-        let sign = Int(c(",")) - Int(buffer[2])
+        let sign = 1 - Int(buffer[2])
         guard sign != 0 else { return .malformed }
         let offset =
-              buffer.asciiDigit(at: 3) * 10 * 3600
-            + buffer.asciiDigit(at: 4) * 3600
-            + buffer.asciiDigit(at: 6) * 10 * 60
-            + buffer.asciiDigit(at: 7) * 60
+            Int(buffer[3]) * 10 * 3600
+            + Int(buffer[4]) * 3600
+            + Int(buffer[6]) * 10 * 60
+            + Int(buffer[7]) * 60
         guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 6)
     }
 
     // ±hhmm
-    // swift-format-ignore
-    if accept.contains(.hhmm) && lanewise(buffer,
-        liesBetween: SIMD8(constant: ",,0+0000"),
-                and: SIMD8(constant: "t99-1959"))
+    if accept.contains(.hhmm),
+        let buffer = impose(buffer, lowerBound: ",,0+0000", upperBound: "t99-1959")
     {
-        let sign = Int(c(",")) - Int(buffer[3])
+        let sign = 1 - Int(buffer[3])
         guard sign != 0 else { return .malformed }
         let offset =
-              buffer.asciiDigit(at: 4) * 10 * 3600
-            + buffer.asciiDigit(at: 5) * 3600
-            + buffer.asciiDigit(at: 6) * 10 * 60
-            + buffer.asciiDigit(at: 7) * 60
+            Int(buffer[4]) * 10 * 3600
+            + Int(buffer[5]) * 3600
+            + Int(buffer[6]) * 10 * 60
+            + Int(buffer[7]) * 60
         guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 5)
     }
 
     // ±hhmmss
-    // swift-format-ignore
-    if accept.contains(.hhmmss) && lanewise(buffer,
-        liesBetween: SIMD8(constant: "0+000000"),
-                and: SIMD8(constant: "9-195959"))
+    if accept.contains(.hhmmss),
+        let buffer = impose(buffer, lowerBound: "0+000000", upperBound: "9-195959")
     {
-        let sign = Int(c(",")) - Int(buffer[1])
+        let sign = 1 - Int(buffer[1])
         guard sign != 0 else { return .malformed }
         let offset =
-              buffer.asciiDigit(at: 2) * 10 * 3600
-            + buffer.asciiDigit(at: 3) * 3600
-            + buffer.asciiDigit(at: 4) * 10 * 60
-            + buffer.asciiDigit(at: 5) * 60
-            + buffer.asciiDigit(at: 6) * 10
-            + buffer.asciiDigit(at: 7)
+            Int(buffer[2]) * 10 * 3600
+            + Int(buffer[3]) * 3600
+            + Int(buffer[4]) * 10 * 60
+            + Int(buffer[5]) * 60
+            + Int(buffer[6]) * 10
+            + Int(buffer[7])
         guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 7)
     }
 
     // ±hh:mm:ss
-    // swift-format-ignore
-    let `follows hh:mm:ss` = accept.contains(.`hh:mm:ss`) && lanewise(buffer,
-        liesBetween: SIMD8(constant: "00:00:00"),
-                and: SIMD8(constant: "19:59:59"))
-    if span[span.count - 9] == c("+") && `follows hh:mm:ss` {
-        // swift-format-ignore
-        let offset =
-              buffer.asciiDigit(at: 0) * 10 * 3600
-            + buffer.asciiDigit(at: 1) * 3600
-            + buffer.asciiDigit(at: 3) * 10 * 60
-            + buffer.asciiDigit(at: 4) * 60
-            + buffer.asciiDigit(at: 6) * 10
-            + buffer.asciiDigit(at: 7)
-        guard let tz = TimeZone(secondsFromGMT: offset)
-        else { return .malformed }
-        return .present(tz, trailingByteCount: 9)
-    }
+    if accept.contains(.`hh:mm:ss`) {
+        let sign: Int
+        if span[span.count - 9] == c("+") {
+            sign = 1
+        } else if span[span.count - 9] == c("-") {
+            sign = -1
+        } else {
+            return .missing
+        }
 
-    if span[span.count - 9] == c("-") && `follows hh:mm:ss` {
-        // swift-format-ignore
+        guard let buffer = impose(buffer, lowerBound: "00:00:00", upperBound: "19:59:59")
+        else { return .missing }
         let offset =
-              buffer.asciiDigit(at: 0) * 10 * 3600
-            + buffer.asciiDigit(at: 1) * 3600
-            + buffer.asciiDigit(at: 3) * 10 * 60
-            + buffer.asciiDigit(at: 4) * 60
-            + buffer.asciiDigit(at: 6) * 10
-            + buffer.asciiDigit(at: 7)
-        guard let tz = TimeZone(secondsFromGMT: -offset)
+            Int(buffer[0]) * 10 * 3600
+            + Int(buffer[1]) * 3600
+            + Int(buffer[3]) * 10 * 60
+            + Int(buffer[4]) * 60
+            + Int(buffer[6]) * 10
+            + Int(buffer[7])
+        guard let tz = TimeZone(secondsFromGMT: offset * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 9)
     }
@@ -539,11 +521,36 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
 internal func lanewise<Vector>(
     _ x: Vector,
     liesBetween lowerBound: Vector,
-    and higherBound: Vector
+    and upperBound: Vector
 ) -> Bool where Vector: SIMD, Vector.Scalar: Comparable {
-    let cmp = (x .>= lowerBound) .& (x .<= higherBound)
-    let allTrue = SIMDMask<Vector.MaskStorage>(repeating: true)
-    return cmp == allTrue
+    ((x .>= lowerBound) .& (x .<= upperBound)) == SIMDMask(repeating: true)
+}
+
+@usableFromInline
+internal func lanewise<Vector>(
+    _ x: Vector,
+    lessThenOrEqualTo upperBound: Vector,
+) -> Bool where Vector: SIMD, Vector.Scalar: Comparable {
+    (x .<= upperBound) == SIMDMask(repeating: true)
+}
+
+/// The name is weird. Checks that the simd vector lies between lower and upper
+/// bounds, returns an x - lowerBound on success.
+@usableFromInline
+@inline(__always)
+internal func impose<Vector>(
+    _ x: Vector,
+    lowerBound asciiLo: StaticString,
+    upperBound asciiHi: StaticString,
+) -> Vector? where Vector: SIMD<UInt8> {
+    let lowerBound = Vector(constant: asciiLo)
+    let upperBound = Vector(constant: asciiHi)
+    let subtracted = x &- lowerBound
+
+    guard lanewise(subtracted, lessThenOrEqualTo: upperBound &- lowerBound)
+    else { return nil }
+
+    return subtracted
 }
 
 extension String {
