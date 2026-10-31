@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        swift: ["6.4"]
+        swift: ["6.4.0"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: tryswift/setup-swift@ce5fe39afee72fd792fabab6db8ec3005962daf7 # v1.2.0
