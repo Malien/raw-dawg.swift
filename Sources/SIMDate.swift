@@ -158,7 +158,7 @@ extension DateComponents {
     // to eliminate as many branches as necessary, given a static set of configuration
     // options. If you care for code size, the client may define a single symbol with
     // set parameters to ensure it is only compiled once.
-    // @export(implementation)
+    @export(implementation)
     @inline(__always)
     public init?(
         decodingISO8601 span: Span<UInt8>,
@@ -417,10 +417,8 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
     {
         let sign = 1 - Int(buffer[5])
         guard sign != 0 else { return .malformed }
-        let offset =
-            Int(buffer[6]) * 10 * 3600
-            + Int(buffer[7]) * 3600
-        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+        let offset = buffer.highHalf.highHalf.widen(to: UInt32.self) &* SIMD2(10 * 60 * 60, 60 * 60)
+        guard let tz = TimeZone(secondsFromGMT: Int(offset.wrappedSum()) * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 3)
     }
@@ -432,11 +430,8 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
         let sign = 1 - Int(buffer[2])
         guard sign != 0 else { return .malformed }
         let offset =
-            Int(buffer[3]) * 10 * 3600
-            + Int(buffer[4]) * 3600
-            + Int(buffer[6]) * 10 * 60
-            + Int(buffer[7]) * 60
-        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+            buffer.widen(to: UInt32.self) &* SIMD8(0, 0, 0, 60 * 60 * 10, 60 * 60, 0, 60 * 10, 60)
+        guard let tz = TimeZone(secondsFromGMT: Int(offset.wrappedSum()) * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 6)
     }
@@ -448,11 +443,8 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
         let sign = 1 - Int(buffer[3])
         guard sign != 0 else { return .malformed }
         let offset =
-            Int(buffer[4]) * 10 * 3600
-            + Int(buffer[5]) * 3600
-            + Int(buffer[6]) * 10 * 60
-            + Int(buffer[7]) * 60
-        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+            buffer.highHalf.widen(to: UInt32.self) &* SIMD4(60 * 60 * 10, 60 * 60, 60 * 10, 60)
+        guard let tz = TimeZone(secondsFromGMT: Int(offset.wrappedSum()) * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 5)
     }
@@ -464,13 +456,8 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
         let sign = 1 - Int(buffer[1])
         guard sign != 0 else { return .malformed }
         let offset =
-            Int(buffer[2]) * 10 * 3600
-            + Int(buffer[3]) * 3600
-            + Int(buffer[4]) * 10 * 60
-            + Int(buffer[5]) * 60
-            + Int(buffer[6]) * 10
-            + Int(buffer[7])
-        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+            buffer.widen(to: UInt32.self) &* SIMD8(0, 0, 60 * 60 * 10, 60 * 60, 60 * 10, 60, 10, 1)
+        guard let tz = TimeZone(secondsFromGMT: Int(offset.wrappedSum()) * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 7)
     }
@@ -489,13 +476,8 @@ internal func parseTimezone(from span: Span<UInt8>, accept: TimeZoneComponents) 
         guard let buffer = impose(buffer, lowerBound: "00:00:00", upperBound: "19:59:59")
         else { return .missing }
         let offset =
-            Int(buffer[0]) * 10 * 3600
-            + Int(buffer[1]) * 3600
-            + Int(buffer[3]) * 10 * 60
-            + Int(buffer[4]) * 60
-            + Int(buffer[6]) * 10
-            + Int(buffer[7])
-        guard let tz = TimeZone(secondsFromGMT: offset * sign)
+            buffer.widen(to: UInt32.self) &* SIMD8(60 * 60 * 10, 60 * 60, 0, 60 * 10, 60, 0, 10, 1)
+        guard let tz = TimeZone(secondsFromGMT: Int(offset.wrappedSum()) * sign)
         else { return .malformed }
         return .present(tz, trailingByteCount: 9)
     }
@@ -538,6 +520,14 @@ extension SIMD4 where Scalar: FixedWidthInteger {
     internal func widen<Other: FixedWidthInteger>(to: Other.Type) -> SIMD4<Other> {
         assert(Scalar.bitWidth <= Other.bitWidth)
         return SIMD4<Other>(truncatingIfNeeded: self)
+    }
+}
+
+extension SIMD2 where Scalar: FixedWidthInteger {
+    @usableFromInline
+    internal func widen<Other: FixedWidthInteger>(to: Other.Type) -> SIMD2<Other> {
+        assert(Scalar.bitWidth <= Other.bitWidth)
+        return SIMD2<Other>(truncatingIfNeeded: self)
     }
 }
 
