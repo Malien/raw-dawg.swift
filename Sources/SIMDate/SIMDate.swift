@@ -4,6 +4,17 @@
     public import Foundation
 #endif
 
+// FoundationEssentials doesn't re-export libc, so memcpy needs it imported explicitly.
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#elseif canImport(Musl)
+    import Musl
+#elseif canImport(ucrt)
+    import ucrt
+#endif
+
 public enum ComponentPrecision: Sendable, Comparable {
     case date
     case hour
@@ -543,7 +554,7 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
     precondition(span.count <= vector.scalarCount, "input buffer exceeds SIMD vector capacity")
     span.withUnsafeBytes { source in
         withUnsafeMutableBytes(of: &vector) { target in
-            _ = unsafe memcpy(target.baseAddress, source.baseAddress, source.count)
+            _ = unsafe memcpy(target.baseAddress!, source.baseAddress!, source.count)
         }
     }
 }
