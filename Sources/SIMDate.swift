@@ -158,7 +158,7 @@ extension DateComponents {
     // to eliminate as many branches as necessary, given a static set of configuration
     // options. If you care for code size, the client may define a single symbol with
     // set parameters to ensure it is only compiled once.
-    @export(implementation)
+    // @export(implementation)
     @inline(__always)
     public init?(
         decodingISO8601 span: Span<UInt8>,
@@ -252,20 +252,51 @@ extension DateComponents {
 
         guard (buffer .<= upperBound) == SIMDMask(repeating: true) else { return nil }
 
+        // buffer =            | Y    Y    Y    Y    -  M  M  -  D   D   T  h  h  :  m   m   :  S   S  .  s    s    s    s    s    s    s    s    s    s    s    s
+        // w1     &*           | 10   1    10   1    0  10 1  0  10  1   0  10 1  0  10  1   0  10  1  0  10   1    10   1    10   1    10   1    1    0    0    0
+        //        even &+ odd  | ^^^^^^^^  ^^^^^^^^^ ^^^^^ ^^^^^ ^^^^^^^ ^^^^^ ^^^^^ ^^^^^^^ ^^^^^^ ^^^^^ ^^^^^^^^^ ^^^^^^^^^ ^^^^^^^^^ ^^^^^^^^^ ^^^^^^^^^ ^^^^^^^^^
+        // a      =            | 10Y+Y     10Y+Y     10M   M     [10D+D] 10h   h     [10m+m] 10S    S     10s+s     10s+s     10s+s     10s+s     s         0
+        //        widen to u16 |
+        // w2     &*           | 100       1         1     1     0       1     1     0       1      1     100       1         100       1         1         0
+        //        even &+ odd  | ^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^ ^^^^^^^^^^^^^ ^^^^^^^^^^^^^ ^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^
+        // b      =            | [1000Y+100Y+10Y+Y]  [10M+M]     10h           h             [10S+S]      1000s+100s+10s+s    1000s+100s+10s+s    s
+        //        high         |                                                             ^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^
+        // c      &*           |                                                             0            100000              10                  1
+        //        sum          |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        //        =            |                                                             [100000000s+10000000s+1000000s+100000s+10000s+1000s+100s+10s+s]
+
+        let w1 = SIMD32<UInt8>(
+            10, 1, 10, 1,
+            0,
+            10, 1,
+            0,
+            10, 1,
+            0,
+            10, 1,
+            0,
+            10, 1,
+            0,
+            10, 1,
+            0,
+            10, 1, 10, 1, 10, 1, 10, 1, 1, 0, 0, 0
+        )
+        let a = condense(buffer &* w1)
+
+        let w2 = SIMD16<UInt16>(100, 1, 1, 1, 0, 1, 1, 0, 1, 1, 100, 1, 100, 1, 1, 0)
+        let b = condense(a.widen(to: UInt16.self) &* w2)
+
+        let c = b.highHalf.widen(to: UInt32.self) &* SIMD4(0, 100_000, 10, 1)
+
         // Checks are split between debug-only asserts and production-enforced guards
         // There should be no way for these asserts to trigger, they serve only as
         // programmer documentation and assumption enforcement
-        let year =
-            Int(buffer[0]) * 1000
-            + Int(buffer[1]) * 100
-            + Int(buffer[2]) * 10
-            + Int(buffer[3])
-        assert(year >= 0 && year < 10000)
+        let year = b[0]
+        assert(year < 10000)
 
-        let month = Int(buffer[5] * 10 + buffer[6])
+        let month = b[1]
         guard month <= 12 && month > 0 else { return nil }
 
-        let day = Int(buffer[8] * 10 + buffer[9])
+        let day = a[4]
         guard day > 0 && day <= 31 else { return nil }
         // day is an interesting one, since the validity of a date depends on the
         // year and month with specific rules DateComponents.isValidDate already
@@ -273,8 +304,7 @@ extension DateComponents {
 
         let hour: Int?
         if components.range.upperBound >= .hour {
-            let h = buffer[11] * 10 + buffer[12]
-            assert(h >= 0)
+            let h = b[2] + b[3]
             guard h < 24 else { return nil }
             hour = Int(h)
         } else {
@@ -284,8 +314,8 @@ extension DateComponents {
         // minute and second are already validated with the simd comparisons
         let minute: Int?
         if components.range.upperBound >= .minute {
-            let m = buffer[14] * 10 + buffer[15]
-            assert(m >= 0 && m < 60)
+            let m = a[7]
+            assert(m < 60)
             minute = Int(m)
         } else {
             minute = nil
@@ -293,8 +323,8 @@ extension DateComponents {
 
         let second: Int?
         if components.range.upperBound >= .second {
-            let s = buffer[17] * 10 + buffer[18]
-            assert(s >= 0 && s < 60)
+            let s = b[4]
+            assert(s < 60)
             second = Int(s)
         } else {
             second = nil
@@ -302,18 +332,9 @@ extension DateComponents {
 
         var nanosecond: Int? = nil
         if case .subsecond(_) = components.range.upperBound {
-            let ns =
-                Int(buffer[20]) * 100_000_000
-                + Int(buffer[21]) * 10_000_000
-                + Int(buffer[22]) * 1_000_000
-                + Int(buffer[23]) * 100_000
-                + Int(buffer[24]) * 10_000
-                + Int(buffer[25]) * 1_000
-                + Int(buffer[26]) * 100
-                + Int(buffer[27]) * 10
-                + Int(buffer[28])
-            assert(ns >= 0 && ns < 1_000_000_000)
-            nanosecond = ns
+            let ns = c.wrappedSum()
+            assert(ns < 1_000_000_000)
+            nanosecond = Int(ns)
         } else {
             nanosecond = nil
         }
@@ -321,9 +342,9 @@ extension DateComponents {
         self.init(
             calendar: .init(identifier: .iso8601),
             timeZone: tz,
-            year: year,
-            month: month,
-            day: day,
+            year: Int(year),
+            month: Int(month),
+            day: Int(day),
             hour: hour,
             minute: minute,
             second: second,
@@ -494,11 +515,29 @@ extension SIMD where Scalar == UInt8 {
             return unsafe Self($0)
         }
     }
+}
 
-    @inline(__always)
+extension SIMD16 where Scalar: FixedWidthInteger {
     @usableFromInline
-    internal func asciiDigit(at index: Int) -> Int {
-        Int(self[index] - c("0"))
+    internal func widen<Other: FixedWidthInteger>(to: Other.Type) -> SIMD16<Other> {
+        assert(Scalar.bitWidth <= Other.bitWidth)
+        return SIMD16<Other>(truncatingIfNeeded: self)
+    }
+}
+
+extension SIMD8 where Scalar: FixedWidthInteger {
+    @usableFromInline
+    internal func widen<Other: FixedWidthInteger>(to: Other.Type) -> SIMD8<Other> {
+        assert(Scalar.bitWidth <= Other.bitWidth)
+        return SIMD8<Other>(truncatingIfNeeded: self)
+    }
+}
+
+extension SIMD4 where Scalar: FixedWidthInteger {
+    @usableFromInline
+    internal func widen<Other: FixedWidthInteger>(to: Other.Type) -> SIMD4<Other> {
+        assert(Scalar.bitWidth <= Other.bitWidth)
+        return SIMD4<Other>(truncatingIfNeeded: self)
     }
 }
 
@@ -536,6 +575,15 @@ internal func impose<Vector>(
     else { return nil }
 
     return subtracted
+}
+
+@usableFromInline
+internal func condense<Scalar: FixedWidthInteger>(_ vector: SIMD32<Scalar>) -> SIMD16<Scalar> {
+    vector.evenHalf &+ vector.oddHalf
+}
+@usableFromInline
+internal func condense<Scalar: FixedWidthInteger>(_ vector: SIMD16<Scalar>) -> SIMD8<Scalar> {
+    vector.evenHalf &+ vector.oddHalf
 }
 
 extension String {
