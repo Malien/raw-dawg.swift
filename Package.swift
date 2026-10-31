@@ -1,10 +1,23 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.4
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 // Aka. the platforms that don't ship SQLite3 swift package by default
 let nonApplePlatforms: [Platform] = [.linux, .windows, .android, .openbsd, .wasi]
+
+/// Strict settings carried over from the standalone simdate.swift package.
+/// Applied only to the SIMDate targets.
+let simdateSwiftSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("InternalImportsByDefault"),
+    .enableUpcomingFeature("MemberImportVisibility"),
+    .enableUpcomingFeature("InferIsolatedConformances"),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+    .enableUpcomingFeature("ImmutableWeakCaptures"),
+    .strictMemorySafety(),
+    .treatAllWarnings(as: .error),
+]
 
 let package = Package(
     name: "raw-dawg",
@@ -33,6 +46,7 @@ let package = Package(
         .target(
             name: "RawDawg",
             dependencies: [
+                "SIMDate",
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Algorithms", package: "swift-algorithms"),
                 .product(name: "Collections", package: "swift-collections"),
@@ -40,6 +54,16 @@ let package = Package(
                     name: "CSQLite", package: "CSQLite",
                     condition: .when(platforms: nonApplePlatforms)),
             ]
+        ),
+        // Internal: not exposed as a product.
+        .target(
+            name: "SIMDate",
+            swiftSettings: simdateSwiftSettings
+        ),
+        .testTarget(
+            name: "SIMDateTests",
+            dependencies: ["SIMDate"],
+            swiftSettings: simdateSwiftSettings
         ),
         .testTarget(
             name: "RawDawgTests",
