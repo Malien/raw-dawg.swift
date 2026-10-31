@@ -543,7 +543,7 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
     precondition(span.count <= vector.scalarCount, "input buffer exceeds SIMD vector capacity")
     span.withUnsafeBytes { source in
         withUnsafeMutableBytes(of: &vector) { target in
-            _ = unsafe memcpy(target.baseAddress, source.baseAddress, source.count)
+            unsafe target.copyMemory(from: source)
         }
     }
 }
