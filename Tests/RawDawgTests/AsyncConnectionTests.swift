@@ -344,7 +344,11 @@ import Testing
         formatter.formatOptions.insert(.withFractionalSeconds)
         formatter.timeZone = TimeZone(identifier: "UTC")!
 
-        #expect(date == formatter.date(from: "2024-02-03T08:12:23.032Z")!)
+        #expect(date == DateComponents(
+            calendar: .init(identifier: .iso8601),
+            timeZone: .gmt,
+            year: 2024, month: 2, day: 3, hour: 8, minute: 12, second: 23, nanosecond: 032 * 1_000_000
+        ).date!)
     }
 
     @Test func fetchOneParameterPackDecode() async throws {

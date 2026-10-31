@@ -80,14 +80,14 @@ struct DateDecodingTests {
     ])
     func foundationCalendar(_ c: DateCase) { c.check() }
 
-    @Test("Bare dates are rejected (.datetimeOnly)", .disabled("There is not an option that would allow Date.init to customize the DateComponents.init in such a way"), arguments: [
+    @Test("Bare dates are rejected (.datetimeOnly)", arguments: [
         "2020-02-02",
         "2020-02-02Z",
         "2020-02-02+05:00",
     ])
     func bareDates(_ input: String) { DateCase(reject: input).check() }
 
-    @Test("A missing offset is rejected (.requirePresent)", .disabled("There is not an option that would allow Date.init to customize the DateComponents.init in such a way"), arguments: [
+    @Test("A missing offset is rejected (.requirePresent)", arguments: [
         "2020-02-02T08:00:34",
         "2020-02-02T08:00:34.5",
         "2020-02-02T08:00",
