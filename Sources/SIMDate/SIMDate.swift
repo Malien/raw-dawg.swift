@@ -554,7 +554,11 @@ internal func memcpy(_ span: Span<UInt8>, intoSIMD vector: inout some SIMD<UInt8
     precondition(span.count <= vector.scalarCount, "input buffer exceeds SIMD vector capacity")
     span.withUnsafeBytes { source in
         withUnsafeMutableBytes(of: &vector) { target in
-            _ = unsafe memcpy(target.baseAddress, source.baseAddress, source.count)
+            // glibc's memcpy takes non-null pointers. baseAddress is only nil for an empty span.
+            guard let destination = target.baseAddress,
+                let origin = source.baseAddress
+            else { return }
+            _ = unsafe memcpy(destination, origin, source.count)
         }
     }
 }
